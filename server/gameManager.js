@@ -6,9 +6,9 @@ const { getRandomPrompt, validateAnswer } = require('./questionLoader');
 const RARITY_POINTS = { common: 10, uncommon: 20, rare: 35, deep_cut: 50, one_in_a_krillion: 100 };
 const START_HEARTS = 2;
 const MAX_HEARTS = 3;
-const MIN_FUSE_MS = 12000;
-const MAX_FUSE_MS = 25000;
-const MIN_TURN_WINDOW_MS = 6000;
+const MIN_FUSE_MS = 18000; // Increased: 18-32s range
+const MAX_FUSE_MS = 32000;
+const MIN_TURN_WINDOW_MS = 8000; // Increased: bump to 8s
 const POINTS_PER_HEART = 100;
 
 const rooms = new Map();
@@ -249,17 +249,36 @@ function startGame(code, playerId) {
   if (room.state !== 'lobby') return { ok: false, error: 'already_started' };
   if (room.players.length < 2) return { ok: false, error: 'need_two_players' };
 
-  room.state = 'playing';
-  room.winner = null;
-  room.usedPromptIds = [];
+  // Prepare first prompt and player
   const prompt = loadNewPrompt(room);
   if (!prompt) {
     room.state = 'lobby';
     return { ok: false, error: 'no_question_data' };
   }
-  room.activePlayerId = room.players[Math.floor(Math.random() * room.players.length)].id;
-  startFuse(room);
-  emitUpdate(room);
+  
+  const firstPlayer = room.players[Math.floor(Math.random() * room.players.length)];
+  room.activePlayerId = firstPlayer.id;
+  room.winner = null;
+  room.usedPromptIds = [];
+  
+  room.state = 'starting';
+  
+  bus.emit('game_starting', {
+    code: room.code,
+    firstPlayer: firstPlayer.nickname,
+    category: room.category,
+    seconds: 3
+  });
+
+  setTimeout(() => {
+    const r = rooms.get(code);
+    if (r && r.state === 'starting') {
+      r.state = 'playing';
+      startFuse(r);
+      emitUpdate(r);
+    }
+  }, 3000);
+
   return { ok: true, room: snapshot(room) };
 }
 
@@ -287,7 +306,11 @@ function submitAnswer(code, playerId, userInput) {
   }
 
   room.activePlayerId = nextAliveId(room, player.id) || player.id;
-  startFuse(room, MIN_TURN_WINDOW_MS);
+  
+  // Adjusted timing logic: if low, bump to 8s, otherwise random
+  const remaining = room.fuseEndsAt ? Math.max(0, room.fuseEndsAt - Date.now()) : 0;
+  const duration = remaining < MIN_TURN_WINDOW_MS ? MIN_TURN_WINDOW_MS : null;
+  startFuse(room, duration);
 
   emitUpdate(room);
   return {

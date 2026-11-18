@@ -47,6 +47,10 @@ gameManager.on('game:over', (data) => {
   io.to(data.code).emit('game_over', data);
 });
 
+gameManager.on('game_starting', (data) => {
+  io.to(data.code).emit('game_starting', data);
+});
+
 // --- Socket Event Handlers ---
 
 io.on('connection', (socket) => {
@@ -87,11 +91,10 @@ io.on('connection', (socket) => {
   socket.on('start_game', ({ roomCode }) => {
     const code = (roomCode || '').toUpperCase();
     const res = gameManager.startGame(code, socket.id);
-    if (res.ok) {
-      io.to(code).emit('game_state', res.room);
-    } else {
+    if (!res.ok) {
       socket.emit('error_msg', res.error);
     }
+    // 'game_starting' event is handled by gameManager's bus
   });
 
   socket.on('submit_answer', ({ roomCode, text }) => {
@@ -139,11 +142,10 @@ io.on('connection', (socket) => {
 
     room.state = 'lobby'; 
     const res = gameManager.startGame(code, socket.id);
-    if (res.ok) {
-      io.to(code).emit('game_state', res.room);
-    } else {
+    if (!res.ok) {
       socket.emit('error_msg', res.error);
     }
+    // 'game_starting' event is handled by gameManager's bus
   });
 
   socket.on('disconnect', () => {

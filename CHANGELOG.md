@@ -1,5 +1,27 @@
 # CHANGELOG - Scallion
 
+## Milestone: Game Pacing & UI Refinement (Step 14A/B/15A/B/C)
+### Changed
+- **Toast Routing**: Implemented smart toast routing in `client.js`. Lobby/Waiting Room alerts now use `#global-toast-container` (top-centered), while in-game alerts use the status slot below the chopping block.
+- **Start Countdown**: Added `game_starting` handler. The game now starts with a 3-second countdown in the arena view: `"🔪 Get ready! [Player] is up first in 3..."`
+- **Intermission Polish**: Updated `round_intermission` to show both the victim and the next active player: `"🔪 [Player] got chopped! [NextPlayer] is up next in 3..."`
+- **Visual Polish**: 
+  - Updated tab title to "Scallion | Chopped".
+  - Increased center Scallion size (80px) and centered it with the player name using a new flex container.
+  - Redrew the Cleaver as an angled poised asset with "cock-back" panic pulses and a decisive "chop" swing.
+  - Added a scrollable category pill tray in the Lobby.
+- **Cleanup**: Removed the background rarity watermark text logic and CSS.
+- **Pacing**: Increased fuse duration to 18–32s and bumped minimum turn windows to 8s.
+
+### Files & Key Symbols
+- `public/index.html`: Updated structure, tab title, and layout.
+- `public/style.css`: Added `.chopping-contents`, new cleaver animations, and scrollable tray.
+- `public/client.js`: `showToast` routing, `socket.on('game_starting')`, and updated intermission countdown.
+- `server/gameManager.js`: `MIN_FUSE_MS`, `MAX_FUSE_MS`, `MIN_TURN_WINDOW_MS`, `startGame`.
+- `server/index.js`: `gameManager.on('game_starting')`.
+
+---
+
 ## Milestone: Game Loop Refinement & Polish (Final)
 ### Fixed
 - **Pointer Alignment**: Fixed arrow rotation logic using `getBoundingClientRect` and `Math.atan2` for pixel-perfect targeting.

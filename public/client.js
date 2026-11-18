@@ -6,6 +6,7 @@ const socket = io();
 let myId = null;
 let myRoomCode = null;
 let myNickname = '';
+let selectedCategory = 'All';
 let currentFuseEndsAt = null;
 let currentFuseDuration = null;
 let intermissionInterval = null;
@@ -29,7 +30,7 @@ const views = {
 
 const elements = {
   nickname: document.getElementById('lobby-nickname'),
-  category: document.getElementById('lobby-category'),
+  categoryPills: document.getElementById('category-pills'),
   roomCode: document.getElementById('lobby-room-code'),
   waitingCode: document.getElementById('waiting-code'),
   waitingCategory: document.getElementById('waiting-category'),
@@ -37,13 +38,13 @@ const elements = {
   btnStart: document.getElementById('btn-start'),
   promptBanner: document.getElementById('prompt-banner'),
   timerBarFill: document.getElementById('timer-bar-fill'),
-  scallionVisual: document.getElementById('scallion-visual'),
   turnIndicator: document.getElementById('turn-indicator'),
   playerRing: document.getElementById('player-ring'),
   answerForm: document.getElementById('answer-form'),
   answerInput: document.getElementById('answer-input'),
   activityFeed: document.getElementById('activity-feed'),
   toastContainer: document.getElementById('toast-container'),
+  globalToastContainer: document.getElementById('global-toast-container'),
   recentAnswers: document.getElementById('recent-answers'),
   centerScallion: document.getElementById('center-scallion'),
   centerPlayerName: document.getElementById('center-player-name'),
@@ -60,25 +61,30 @@ function showView(viewName) {
 }
 
 function showToast(message, type = 'info') {
-  // Hide turn indicator while toast is visible
-  const originalText = elements.turnIndicator.textContent;
-  elements.turnIndicator.classList.add('hidden');
+  const isGameVisible = !views.game.classList.contains('hidden');
+  const container = isGameVisible ? elements.toastContainer : elements.globalToastContainer;
+  
+  let originalText = '';
+  if (isGameVisible) {
+    originalText = elements.turnIndicator.textContent;
+    elements.turnIndicator.classList.add('hidden');
+  }
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
   
   const colors = {
-    error: { border: 'var(--error)', text: '#ffcccc' },
-    success: { border: 'var(--accent-green)', text: 'white' },
-    warning: { border: 'var(--accent-gold)', text: 'white' },
-    info: { border: 'var(--accent-green)', text: 'white' },
+    error: { border: 'var(--error)', text: '#2b1d12' },
+    success: { border: 'var(--accent-green)', text: '#2b1d12' },
+    warning: { border: 'var(--accent-gold)', text: '#2b1d12' },
+    info: { border: 'var(--accent-green)', text: '#2b1d12' },
   };
   const theme = colors[type] || colors.info;
   toast.style.borderColor = theme.border;
   toast.style.color = theme.text;
 
-  elements.toastContainer.appendChild(toast);
+  container.appendChild(toast);
   
   setTimeout(() => {
     toast.style.opacity = '0';
@@ -86,9 +92,10 @@ function showToast(message, type = 'info') {
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => {
       toast.remove();
-      // Restore turn indicator
-      elements.turnIndicator.classList.remove('hidden');
-      elements.turnIndicator.textContent = originalText;
+      if (isGameVisible) {
+        elements.turnIndicator.classList.remove('hidden');
+        elements.turnIndicator.textContent = originalText;
+      }
     }, 300);
   }, 2000);
 }
@@ -103,7 +110,7 @@ function getScallionAvatarSVG(state) {
       <circle cx="42" cy="35" r="4" fill="white" stroke="#160d08" stroke-width="1"/>
       <circle cx="42" cy="35" r="1" fill="black"/>
       <circle cx="58" cy="35" r="4" fill="white" stroke="#160d08" stroke-width="1"/>
-      <circle cx="58" cy, "35" r="1" fill="black"/>
+      <circle cx="58" cy="35" r="1" fill="black"/>
       <circle cx="50" cy="45" r="3" fill="none" stroke="#160d08" stroke-width="2"/>
       <text x="62" y="30" font-size="15">💧</text>
     `;
@@ -177,29 +184,29 @@ socket.on('disconnect', () => {
 });
 
 socket.on('categories_list', (list) => {
-  elements.category.innerHTML = '';
-  const allOpt = document.createElement('option');
-  allOpt.value = 'All';
-  allOpt.textContent = 'All Categories';
-  elements.category.appendChild(allOpt);
-
-  list.forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat;
-    opt.textContent = cat;
-    elements.category.appendChild(opt);
+  elements.categoryPills.innerHTML = '';
+  const categories = ['All', ...list];
+  categories.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `category-pill ${cat === 'All' ? 'active' : ''}`;
+    btn.textContent = cat === 'All' ? 'All Categories' : cat;
+    btn.onclick = () => {
+      selectedCategory = cat;
+      document.querySelectorAll('.category-pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    elements.categoryPills.appendChild(btn);
   });
 });
 
 socket.on('room_updated', (room) => {
   if (document.getElementById('winner-overlay')) return;
   myRoomCode = room.code;
-  
-  if (room.state === 'playing' || room.state === 'intermission') {
+  if (room.state === 'playing' || room.state === 'intermission' || room.state === 'starting') {
     socket.emit('request_game_state', { roomCode: room.code });
     return;
   }
-
   elements.waitingCode.textContent = room.code;
   elements.waitingCategory.textContent = room.category;
   elements.waitingPlayers.innerHTML = '';
@@ -208,11 +215,29 @@ socket.on('room_updated', (room) => {
     li.textContent = `${p.nickname} ${p.isHost ? '(Host)' : ''}`;
     elements.waitingPlayers.appendChild(li);
   });
-
   const me = room.players.find(p => p.id === socket.id);
   elements.btnStart.classList.toggle('hidden', !me || !me.isHost);
-
   showView('waiting');
+});
+
+socket.on('game_starting', (data) => {
+  showView('game');
+  elements.answerInput.disabled = true;
+  elements.intermissionBanner.classList.remove('hidden');
+  
+  let count = data.seconds;
+  elements.intermissionText.textContent = `🔪 Get ready! ${data.firstPlayer} is up first in ${count}...`;
+  
+  if (intermissionInterval) clearInterval(intermissionInterval);
+  intermissionInterval = setInterval(() => {
+    count--;
+    if (count <= 0) {
+      clearInterval(intermissionInterval);
+      intermissionInterval = null;
+    } else {
+      elements.intermissionText.textContent = `🔪 Get ready! ${data.firstPlayer} is up first in ${count}...`;
+    }
+  }, 1000);
 });
 
 socket.on('game_state', (room) => {
@@ -235,7 +260,6 @@ socket.on('game_state', (room) => {
     elements.promptBanner.innerHTML = `<span style="color:var(--accent-green); font-size:0.8rem; display:block; text-transform:uppercase;">${cat}</span>${room.currentPrompt.prompt}`;
   }
 
-  // Update Center Chopping Block
   if (room.activePlayerId) {
     const activeP = room.players.find(p => p.id === room.activePlayerId);
     if (activeP) {
@@ -255,22 +279,18 @@ socket.on('game_state', (room) => {
     const angle = (i / room.players.length) * Math.PI * 2;
     const x = centerX + radius * Math.cos(angle) - 55;
     const y = centerY + radius * Math.sin(angle) - 25;
-
     const card = document.createElement('div');
     card.className = `player-card ${p.id === room.activePlayerId ? 'active' : ''} ${!p.alive ? 'eliminated' : ''}`;
     card.id = `player-${p.id}`;
     card.style.left = `${x}px`;
     card.style.top = `${y}px`;
-    
     const rarityPercent = (p.rarityPoints / 100) * 100;
     const avatarState = !p.alive ? 'chopped' : (p.id === room.activePlayerId ? 'panic' : 'calm');
-    
     let livesHtml = '';
     for(let h=0; h<3; h++) {
       const filled = h < p.hearts;
       livesHtml += `<div class="stalk" style="background:${filled ? 'var(--accent-green)' : 'transparent'}; border-style:${filled ? 'solid' : 'dashed'}"></div>`;
     }
-
     card.innerHTML = `
       <div class="scallion-avatar">${getScallionAvatarSVG(avatarState)}</div>
       <div class="player-name">${p.nickname}</div>
@@ -302,7 +322,6 @@ socket.on('answer_result', (res) => {
     const rarityText = res.rarity.replace('_', ' ').toUpperCase();
     addFeedMessage(`Correct! ${res.rarity} (+${res.pointsAwarded} pts)`);
     showToast(`${rarityText}! +${res.pointsAwarded}`, 'success');
-    
     const pill = document.createElement('span');
     pill.className = `answer-pill pill-${res.rarity}`;
     pill.textContent = res.matchedAnswer;
@@ -310,12 +329,6 @@ socket.on('answer_result', (res) => {
     if (elements.recentAnswers.childNodes.length > 12) {
       elements.recentAnswers.removeChild(elements.recentAnswers.lastChild);
     }
-
-    const badge = document.createElement('div');
-    badge.style = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3rem; font-weight:bold; color:var(--accent-green); pointer-events:none; animation: pop 0.5s forwards;';
-    badge.textContent = rarityText;
-    document.body.appendChild(badge);
-    setTimeout(() => badge.remove(), 500);
   } else {
     const msg = res.reason === 'used' ? 'That answer was already used!' : 'Invalid answer!';
     addFeedMessage(msg);
@@ -337,13 +350,11 @@ socket.on('round_intermission', (data) => {
   elements.answerInput.disabled = true;
   elements.recentAnswers.innerHTML = '';
   elements.intermissionBanner.classList.remove('hidden');
-  
-  // Trigger cleaver chop animation
   elements.centerCleaver.classList.add('cleaver-chop');
   setTimeout(() => elements.centerCleaver.classList.remove('cleaver-chop'), 300);
 
   let count = 3;
-  elements.intermissionText.textContent = `🔪 ${data.explodedPlayer} GOT CHOPPED! New order in ${count}...`;
+  elements.intermissionText.textContent = `🔪 ${data.explodedPlayer} got chopped! ${data.nextPlayer} is up next in ${count}...`;
   
   if (intermissionInterval) clearInterval(intermissionInterval);
   intermissionInterval = setInterval(() => {
@@ -352,7 +363,7 @@ socket.on('round_intermission', (data) => {
       clearInterval(intermissionInterval);
       intermissionInterval = null;
     } else {
-      elements.intermissionText.textContent = `🔪 ${data.explodedPlayer} GOT CHOPPED! New order in ${count}...`;
+      elements.intermissionText.textContent = `🔪 ${data.explodedPlayer} got chopped! ${data.nextPlayer} is up next in ${count}...`;
     }
   }, 1000);
 });
@@ -369,7 +380,6 @@ socket.on('error_msg', (code) => {
 socket.on('player_typing', ({ playerId, text }) => {
   const card = document.getElementById(`player-${playerId}`);
   if (!card) return;
-
   let bubble = card.querySelector('.typing-bubble');
   if (!bubble) {
     bubble = document.createElement('div');
@@ -384,9 +394,8 @@ socket.on('player_typing', ({ playerId, text }) => {
 
 document.getElementById('btn-create').onclick = () => {
   const nickname = elements.nickname.value.trim();
-  const category = elements.category.value;
   if (!nickname) return showToast('Please enter a nickname', 'error');
-  socket.emit('create_room', { nickname, category });
+  socket.emit('create_room', { nickname, category: selectedCategory });
 };
 
 document.getElementById('btn-join').onclick = () => {
@@ -437,8 +446,6 @@ function updateFuseUI() {
     const percent = (remaining / currentFuseDuration) * 100;
     if (elements.timerBarFill) {
       elements.timerBarFill.style.width = `${percent}%`;
-      
-      // Panic effects when timer is low (< 30%)
       if (percent < 30) {
         const activeId = document.querySelector('.player-card.active')?.id.replace('player-','');
         if (activeId) {

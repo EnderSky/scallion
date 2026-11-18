@@ -3,10 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Scallion | Puffer Party</title>
+  <title>Scallion | Chopped</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Global Toast Container for Lobby/Waiting alerts -->
+  <div id="global-toast-container"></div>
+
   <div id="app">
     <!-- VIEW 1: LOBBY -->
     <div id="view-lobby" class="view">
@@ -22,9 +25,7 @@
         <div class="lobby-options">
           <div class="option-box">
             <h3>Create Room</h3>
-            <select id="lobby-category">
-              <option value="All">All Categories</option>
-            </select>
+            <div id="category-pills" class="category-pills"></div>
             <button id="btn-create">Create</button>
           </div>
           
@@ -72,17 +73,20 @@
           </div>
 
           <div id="chopping-block" class="chopping-block">
-            <!-- Hovering Cleaver -->
+            <!-- Poised Cleaver -->
             <div id="center-cleaver" class="hover-cleaver">
-              <svg width="40" height="60" viewBox="0 0 40 60" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0" y="0" width="30" height="45" rx="2" fill="#ddd" stroke="#160d08" stroke-width="3" />
-                <rect x="25" y="45" width="10" height="15" fill="#5d4037" stroke="#160d08" stroke-width="3" />
-                <path d="M0 10 L30 10" stroke="#aaa" stroke-width="1" />
+              <svg width="80" height="60" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 10 L60 10 L60 45 L10 45 Z" fill="#ddd" stroke="#160d08" stroke-width="3" />
+                <path d="M10 40 L60 40" stroke="#aaa" stroke-width="1" />
+                <circle cx="18" cy="27" r="4" fill="#160d08" />
+                <rect x="60" y="20" width="15" height="20" rx="2" fill="#5d4037" stroke="#160d08" stroke-width="3" />
               </svg>
             </div>
-            <!-- Active Player Scallion -->
-            <div id="center-scallion" class="center-scallion"></div>
-            <div id="center-player-name" class="center-player-name"></div>
+            <!-- Scallion and Name Group -->
+            <div class="chopping-contents">
+              <div id="center-scallion" class="center-scallion"></div>
+              <div id="center-player-name" class="center-player-name"></div>
+            </div>
           </div>
 
           <!-- Integrated Toast/Status Area -->
@@ -104,7 +108,7 @@
     </div>
   </div>
 
-  <!-- Compact Intermission Pill -->
+  <!-- Full-Width Centered Intermission Overlay -->
   <div id="intermission-banner" class="intermission-banner hidden">
     <div class="intermission-pill">
       <h2 id="intermission-text">NEW PROMPT INCOMING...</h2>
