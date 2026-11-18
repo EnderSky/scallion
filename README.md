@@ -1,6 +1,6 @@
 # Scallion 🧅
 
-A fast-paced, local and online multiplayer hot-potato category trivia game. Players scramble to answer prompts before the "puffer" explodes, with an Overcooked-style chaotic energy and rarity-based scoring.
+A fast-paced online multiplayer hot-potato category trivia game. Players scramble to answer prompts before they're chopped, with an Overcooked-style chaotic energy and rarity-based scoring.
 
 ## Tech Stack
 - **Backend**: Node.js, Express, Socket.io
