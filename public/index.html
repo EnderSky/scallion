@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Scallion | Puffer Party</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- VIEW 1: LOBBY -->
+    <div id="view-lobby" class="view">
+      <div class="card">
+        <h1 class="main-title">SCALLION</h1>
+        <p class="subtitle">Answer before you're chopped!</p>
+        
+        <div class="input-group">
+          <label>Nickname</label>
+          <input type="text" id="lobby-nickname" placeholder="Enter name..." maxlength="15">
+        </div>
+
+        <div class="lobby-options">
+          <div class="option-box">
+            <h3>Create Room</h3>
+            <select id="lobby-category">
+              <option value="All">All Categories</option>
+            </select>
+            <button id="btn-create">Create</button>
+          </div>
+          
+          <div class="divider">OR</div>
+
+          <div class="option-box">
+            <h3>Join Room</h3>
+            <input type="text" id="lobby-room-code" placeholder="XXXX" maxlength="4">
+            <button id="btn-join">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: WAITING ROOM -->
+    <div id="view-waiting" class="view hidden">
+      <div class="card">
+        <h2 class="waiting-title">Room Code</h2>
+        <div id="waiting-code" class="room-code-badge" title="Click to copy">----</div>
+        <p class="copy-hint">Click code to copy</p>
+        
+        <p class="category-info">Category: <span id="waiting-category">...</span></p>
+        
+        <div class="player-list-container">
+          <h3>Players</h3>
+          <ul id="waiting-players"></ul>
+        </div>
+
+        <button id="btn-start" class="hidden">Start Game</button>
+      </div>
+    </div>
+
+    <!-- VIEW 3: GAME ARENA -->
+    <div id="view-game" class="view hidden">
+      <div class="game-layout">
+        <div id="prompt-banner" class="prompt-banner">
+          Loading prompt...
+        </div>
+
+        <div id="recent-answers" class="recent-answers"></div>
+
+        <div class="arena-center">
+          <div id="timer-bar-container" class="timer-bar-container">
+            <div id="timer-bar-fill" class="timer-bar-fill"></div>
+          </div>
+
+          <div id="chopping-block" class="chopping-block">
+            <!-- Hovering Cleaver -->
+            <div id="center-cleaver" class="hover-cleaver">
+              <svg width="40" height="60" viewBox="0 0 40 60" xmlns="http://www.w3.org/2000/svg">
+                <rect x="0" y="0" width="30" height="45" rx="2" fill="#ddd" stroke="#160d08" stroke-width="3" />
+                <rect x="25" y="45" width="10" height="15" fill="#5d4037" stroke="#160d08" stroke-width="3" />
+                <path d="M0 10 L30 10" stroke="#aaa" stroke-width="1" />
+              </svg>
+            </div>
+            <!-- Active Player Scallion -->
+            <div id="center-scallion" class="center-scallion"></div>
+            <div id="center-player-name" class="center-player-name"></div>
+          </div>
+
+          <!-- Integrated Toast/Status Area -->
+          <div id="toast-container"></div>
+          <div id="turn-indicator">Wait your turn...</div>
+        </div>
+
+        <div id="player-ring" class="player-ring"></div>
+
+        <div class="input-area">
+          <form id="answer-form">
+            <input type="text" id="answer-input" placeholder="Type answer here..." autocomplete="off">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+
+        <div class="activity-feed" id="activity-feed"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compact Intermission Pill -->
+  <div id="intermission-banner" class="intermission-banner hidden">
+    <div class="intermission-pill">
+      <h2 id="intermission-text">NEW PROMPT INCOMING...</h2>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

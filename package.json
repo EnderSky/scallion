@@ -1,0 +1,16 @@
+{
+  "name": "scallion",
+  "version": "1.0.0",
+  "description": "Scallion - a local multiplayer hot-potato trivia web game",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
