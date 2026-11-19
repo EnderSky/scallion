@@ -1,5 +1,10 @@
 # CHANGELOG - Scallion
 
+## [1.1.47] - 2026-11-19
+### Fixed
+- **Lobby Vertical Centering + Mobile Scroll**: `public/style.css` — `body` restored to `overflow: hidden; align-items: center` for viewport-centered flex container. `#view-lobby` now `max-height: 100dvh; overflow-y: auto; justify-content: center` — centers vertically when content fits, scrolls internally when it overflows. Best of both worlds: centered on desktop, scrollable on small mobile.
+- **Cache-Busting**: `public/index.html` bumped to `?v=39` for `style.css` and `client.js`.
+
 ## [1.1.46] - 2026-11-19
 ### Fixed
 - **Mobile Scroll & Lobby Corners**: `public/style.css` — `body` changed to `min-height: 100dvh; overflow: auto; align-items: flex-start` allowing page scroll when content exceeds viewport. `#view-lobby` now `justify-content: flex-start; overflow-y: auto` so lobby content scrolls on small screens while preserving rounded corners (`border-radius: 1rem`). Game/Waiting views remain non-scrolling via their sticky sections.
