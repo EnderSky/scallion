@@ -1,5 +1,52 @@
 # CHANGELOG - Scallion
 
+## [1.1.46] - 2026-11-19
+### Fixed
+- **Mobile Scroll & Lobby Corners**: `public/style.css` — `body` changed to `min-height: 100dvh; overflow: auto; align-items: flex-start` allowing page scroll when content exceeds viewport. `#view-lobby` now `justify-content: flex-start; overflow-y: auto` so lobby content scrolls on small screens while preserving rounded corners (`border-radius: 1rem`). Game/Waiting views remain non-scrolling via their sticky sections.
+- **Cache-Busting**: `public/index.html` bumped to `?v=38` for `style.css` and `client.js`.
+
+## [1.1.45] - 2026-11-19
+### Fixed
+- **Mobile Lobby Card Rounded Corners**: `public/style.css` — Added explicit `border-radius: 1rem` to `#view-lobby .card` in `@media (max-width: 600px)` to ensure top corners stay rounded when card stretches to full viewport width.
+- **Cache-Busting**: `public/index.html` bumped to `?v=37` for `style.css` and `client.js`.
+
+## [1.1.44] - 2026-11-19
+### Changed
+- **Mobile Waiting Board Shrunk Further**: `public/style.css` — `@media (max-width: 600px)` reduces `.waiting-board` to `clamp(135px, 34vw, 185px)` with `padding: 10px` (was `clamp(150px, 38vw, 200px)` / `12px`). Grid column updated to `minmax(135px, 185px)` to match. Returns to original sizing for tighter fit.
+- **Cache-Busting**: `public/index.html` bumped to `?v=36` for `style.css` and `client.js`.
+
+## [1.1.43] - 2026-11-19
+### Changed
+- **Mobile Waiting Board Scaled Down**: `public/style.css` — `@media (max-width: 600px)` reduces `.waiting-board` to `clamp(150px, 38vw, 200px)` with `padding: 12px` (was `clamp(170px, 42vw, 230px)` / `14px`). Grid column updated to `minmax(150px, 200px)` to match.
+- **Cache-Busting**: `public/index.html` bumped to `?v=35` for `style.css` and `client.js`.
+
+## [1.1.42] - 2026-11-19
+### Fixed
+- **Waiting Board Grid + Mobile Override**: `public/style.css` — `.waiting-arena-stage` grid-template-columns changed to `1fr minmax(170px, 230px) 1fr` (explicit min/max matching mobile board size). Media query rules for `.waiting-board` now use `!important` on width/height/padding to guarantee override. Ensures mobile board reaches `230px` with `14px` padding.
+- **Cache-Busting**: `public/index.html` bumped to `?v=34` for `style.css` and `client.js`.
+
+## [1.1.41] - 2026-11-19
+### Fixed
+- **Waiting Board Grid Constraint**: `public/style.css` — Changed `.waiting-arena-stage` grid-template-columns from `1fr auto 1fr` to `1fr minmax(0, fit-content(230px)) 1fr` so the center column expands to fit the board's max-width instead of being constrained by `auto` sizing. Ensures mobile size increases take effect.
+- **Cache-Busting**: `public/index.html` bumped to `?v=33` for `style.css` and `client.js`.
+
+## [1.1.40] - 2026-11-19
+### Changed
+- **Mobile Waiting Board Expanded Further**: `public/style.css` — `@media (max-width: 600px)` increases `.waiting-board` to `clamp(170px, 42vw, 230px)` with `padding: 14px` (was `clamp(155px, 38vw, 205px)` / `12px`) to accommodate longer category names (e.g., "Bible") without crowding the gold border.
+- **Cache-Busting**: `public.index.html` bumped to `?v=32` for `style.css` and `client.js`.
+
+## [1.1.39] - 2026-11-19
+### Changed
+- **Mobile Waiting Board Size Increase**: `public/style.css` — `@media (max-width: 600px)` expands `.waiting-board` to `clamp(155px, 38vw, 205px)` (was `clamp(135px, 34vw, 185px)`) with `padding: 12px` (was `10px`) so metadata text fits elegantly inside the gold border without crowding.
+- **Cache-Busting**: `public/index.html` bumped to `?v=31` for `style.css` and `client.js`.
+
+## [1.1.38] - 2026-11-19
+### Changed
+- **Waiting Board Metadata Gap**: `public/style.css` — Added `#waiting-room-meta { display: flex; flex-direction: column; align-items: center; gap: 8px; }` for clear vertical separation between room code badge and category/player-count row.
+- **Mobile Waiting Board Scaling**: `public/style.css` — `@media (max-width: 600px)` reduces room code badge (`font-size: clamp(1rem, 4.2vw, 1.25rem); padding: 2px 8px; letter-spacing: 0.08em`), category pill (`font-size: 0.65rem; padding: 2px 6px`), and player count (`font-size: 0.68rem`) with `gap: 6px` to fit comfortably inside the gold-bordered circle.
+- **Centered Mobile Lobby**: `public/style.css` — `@media (max-width: 600px)` styles `#view-lobby` as full-screen flex column centered with safe-area padding, and `.card` constrained to `max-width: 360px; margin: 0 auto` for equal horizontal margins.
+- **Cache-Busting**: `public/index.html` bumped to `?v=30` for `style.css` and `client.js`.
+
 ## [1.1.37] - 2026-11-19
 ### Changed
 - **Prompt Banner Loading State**: `public/client.js` — During `game_starting` and `round_intermission` countdowns, prompt banner now shows "Loading prompt..." instead of stale/previous prompt. `ticket-swap` animation cleared. Real prompt appears when `game_state` arrives.

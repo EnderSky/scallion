@@ -77,11 +77,11 @@ body {
     rgba(0,0,0,0.1) 80px
   );
   color: var(--text-main);
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100dvh;
+  overflow: auto;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -342,7 +342,7 @@ button:active {
 
 .waiting-arena-stage {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr minmax(135px, 185px) 1fr;
   grid-template-rows: auto auto auto;
   align-content: center;
   justify-items: center;
@@ -375,6 +375,13 @@ button:active {
   text-align: center;
   padding: 10px;
   box-sizing: border-box;
+}
+
+#waiting-room-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .waiting-board .room-code-badge {
@@ -1147,6 +1154,49 @@ button:active {
   }
   .prompt-banner {
     font-size: 1.2rem;
+  }
+
+  /* Waiting board metadata scaling */
+  #waiting-room-meta {
+    gap: 6px;
+  }
+  .waiting-board {
+    width: clamp(135px, 34vw, 185px) !important;
+    height: clamp(135px, 34vw, 185px) !important;
+    padding: 10px !important;
+  }
+  .waiting-board .room-code-badge {
+    font-size: clamp(1rem, 4.2vw, 1.25rem);
+    padding: 2px 8px;
+    letter-spacing: 0.08em;
+  }
+  .waiting-board .waiting-category-pill {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+  .waiting-board .waiting-player-count {
+    font-size: 0.68rem;
+  }
+
+  /* Centered mobile lobby */
+  #view-lobby {
+    width: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  #view-lobby .card {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+    box-sizing: border-box;
+    border-radius: 1rem;
+    flex-shrink: 0;
   }
 }
 
