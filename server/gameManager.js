@@ -287,6 +287,12 @@ function removePlayer(code, playerId) {
   }
 
   if (room.state === 'playing') {
+    // End game if fewer than 2 players remain (can't play with 1)
+    if (room.players.length < 2) {
+      const winner = room.players[0];
+      endGame(room, winner);
+      return { ok: true, room: snapshot(room) };
+    }
     if (checkWinOrContinue(room)) return { ok: true, room: snapshot(room) };
     if (wasActive) room.activePlayerId = nextAliveId(room, playerId) || alivePlayers(room)[0].id;
   }

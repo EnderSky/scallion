@@ -183,7 +183,11 @@ function finalize(answerEntry, normalizedCandidate, used) {
     rarity: answerEntry.rarity,
   };
 
-  if (used.has(normalizedCandidate)) {
+  // Check if ANY form of this answer (main + aliases) is already used
+  const allForms = [answerEntry.answer, ...(Array.isArray(answerEntry.aliases) ? answerEntry.aliases : [])];
+  const isUsed = allForms.some(form => used.has(normalize(form)));
+
+  if (isUsed) {
     return { ...result, valid: false, reason: 'used' };
   }
 

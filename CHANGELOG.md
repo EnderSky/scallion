@@ -1,5 +1,15 @@
 # CHANGELOG - Scallion
 
+## [1.1.49] - 2026-11-19
+### Fixed
+- **Game Ends on Player Leave (2-Player)**: `server/gameManager.js` — `removePlayer()` now ends the game immediately if player count drops below 2 during active play. Previously only checked alive players, allowing game to continue with 1 player after a departure.
+- **Cache-Busting**: (server-side only, no client version bump)
+
+## [1.1.48] - 2026-11-19
+### Fixed
+- **Alias Duplicate Detection**: `server/questionLoader.js` — `finalize()` now checks ALL normalized forms of a matched answer entry (main answer + aliases) against the used-answers set. Previously only the specific matched candidate was checked, allowing aliases of already-used answers to slip through. Now if "Jesus" was given, entering "Christ" (alias) is correctly rejected as "used".
+- **Cache-Busting**: (server-side only, no client version bump)
+
 ## [1.1.47] - 2026-11-19
 ### Fixed
 - **Lobby Vertical Centering + Mobile Scroll**: `public/style.css` — `body` restored to `overflow: hidden; align-items: center` for viewport-centered flex container. `#view-lobby` now `max-height: 100dvh; overflow-y: auto; justify-content: center` — centers vertically when content fits, scrolls internally when it overflows. Best of both worlds: centered on desktop, scrollable on small mobile.
