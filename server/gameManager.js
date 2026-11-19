@@ -14,6 +14,48 @@ const MAX_PLAYERS = 6;
 
 const rooms = new Map();
 
+function resetPlayerStates(room) {
+  room.players.forEach((p) => {
+    p.hearts = START_HEARTS;
+    p.alive = true;
+    p.rarityPoints = 0;
+  });
+}
+
+function resetRoomToLobby(oldCode) {
+  const room = rooms.get(String(oldCode || '').toUpperCase());
+  if (!room) return null;
+
+  clearFuse(room);
+  if (room.returnTimer) {
+    clearTimeout(room.returnTimer);
+    room.returnTimer = null;
+  }
+
+  // Generate a brand-new unique room code
+  const newCode = generateRoomCode();
+
+  // Remove old code entry, store under new code
+  rooms.delete(oldCode);
+  room.code = newCode;
+  rooms.set(newCode, room);
+
+  // Reset room to lobby state
+  room.state = 'lobby';
+  room.winner = null;
+  room.currentPrompt = null;
+  room.usedAnswers = [];
+  room.usedAnswersList = [];
+  room.usedPromptIds = [];
+  room.fuseDurationMs = 0;
+  room.fuseEndsAt = null;
+  room.activePlayerId = null;
+  resetPlayerStates(room);
+
+  emitUpdate(room);
+  return { oldCode, newCode, room };
+}
+
 const bus = new EventEmitter();
 bus.setMaxListeners(100);
 
@@ -231,6 +273,10 @@ function removePlayer(code, playerId) {
 
   if (room.players.length === 0) {
     clearFuse(room);
+    if (room.returnTimer) {
+      clearTimeout(room.returnTimer);
+      room.returnTimer = null;
+    }
     rooms.delete(room.code);
     return { ok: true, roomDeleted: true };
   }
@@ -348,6 +394,7 @@ module.exports = {
   submitAnswer,
   getRoomState,
   getInternalRoom,
+  resetRoomToLobby,
   on: (event, cb) => bus.on(event, cb),
   RARITY_POINTS,
   MAX_HEARTS,

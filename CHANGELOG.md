@@ -1,5 +1,159 @@
 # CHANGELOG - Scallion
 
+## [1.1.37] - 2026-11-19
+### Changed
+- **Prompt Banner Loading State**: `public/client.js` — During `game_starting` and `round_intermission` countdowns, prompt banner now shows "Loading prompt..." instead of stale/previous prompt. `ticket-swap` animation cleared. Real prompt appears when `game_state` arrives.
+- **Cache-Busting**: `public/index.html` bumped to `?v=29` for `style.css` and `client.js`.
+
+## [1.1.36] - 2026-11-19
+### Fixed
+- **Post-Game Countdown Text Stuck**: `public/client.js` — `lobby_ready` now explicitly clears `waitingStatusEl.textContent` and adds `hidden` class after `resetPostGameState()`, preventing "Returning to lobby in 1..." from reappearing when host message toggles visibility.
+- **Leave Room Bounce-Back (Pre-Game & Post-Game)**: `public/client.js` — Membership guards in `room_updated`, `game_starting`, `game_state`, `lobby_ready` now check `room.players` membership **unconditionally** (removed `currentRoomCode &&` prefix), so players who left are never processed. Added `justLeftRoomCode` debounce flag to ignore stale events for the room just left.
+- **Cache-Busting**: `public/index.html` bumped to `?v=28` for `style.css` and `client.js`.
+
+## [1.1.35] - 2026-11-19
+### Fixed
+- **Create Room Flow**: `public/client.js` — `room_updated` now sets `currentRoomCode = room.code` (was only setting `myRoomCode`), so host's Start Game button has a valid room code. Fixed `room.phase` → `room.state` mismatch in `room_updated` and `lobby_ready` handlers. Added debug logging to trace create/join flow.
+- **Start Game Countdown**: `public/client.js` — `game_starting` guard checked `data.roomCode` but server emits `data.code`; fixed to check `data.code` so 3s intermission countdown ("🔪 Get ready! X is up first in 3...") appears correctly.
+- **Width Standardisation**: `public/style.css` — `--arena-bar-width` changed to `min(100%, 560px)` to match `.arena-stage` max-width. `.prompt-banner`, `.arena-bottom-sticky .input-area`, and `#answer-form` all constrained to this width. `#answer-form` now `width: 100%` so input stretches, Send button stays fixed-size on right.
+- **Cache-Busting**: `public/index.html` bumped to `?v=27` for `style.css` and `client.js`.
+
+## [1.1.34] - 2026-11-19
+### Fixed
+- **Bulletproof Leave-Room Guard**: `public/client.js` — `btnLeaveRoom` now captures `codeToLeave`, immediately nulls `currentRoomCode`, calls `resetPostGameState()`, switches to lobby view, then emits `leave_room`. Added membership guards at top of `room_updated`, `lobby_ready`, `game_starting`, `game_state`: `if (!currentRoomCode) return;` + `if (room.players && !room.players.some(p => p.id === socket.id)) return;` prevents bounced-back ghosts.
+- **Victory Showcase State Lock**: `public/client.js` — Added `isPostGameShowcase` flag set `true` in `game_over`, `false` in `resetPostGameState()`. While `true`, `room_updated`/`lobby_ready` are blocked from unhiding meta, hiding winner banner, overwriting countdown, or re-rendering without `.is-winner`/`.winner-crown`/`.is-dead`. `server/index.js` `game:over` now emits full `players[]` array so client can render crown/dead states correctly.
+- **In-Game Panic Shake Restored**: `public/style.css` — `@keyframes panicShake` uses `translate` (`0%,100% {translate:0 0} 25% {translate:-2px 1px} 75% {translate:2px -1px}`); applied to `#view-game .panic-shake` (0.18s infinite). `#waiting-screen .panic-shake` forced `animation:none !important`. `public/client.js` `updateFuseUI` adds `.panic-shake` to active player card and cleaver when fuse <30%, strips on expiry.
+- **Gold Ring on Waiting Board**: `public/style.css` — `.chopping-block.waiting-board` gets `border:5px solid #facc15 !important; box-shadow:0 0 18px rgba(250,204,21,0.55), 0 6px 0 #160d08 !important;` so base rules cannot override.
+- **Cache-Busting**: `public/index.html` bumped to `?v=26` for `style.css` and `client.js`.
+
+## [1.1.32] - 2026-11-19
+### Changed
+- **Room Code Randomization on Auto-Return**: `server/gameManager.js` — `resetRoomToLobby(oldCode)` now generates a brand-new unique 4-letter room code, deletes the old code from the rooms Map, stores the room under the new code, and returns `{ oldCode, newCode, room }`. All player states, timers, prompts, and used answers are cleared.
+- **Socket Migration on Auto-Return**: `server/index.js` — Inside the 5000ms `returnTimer`, all remaining sockets in the old room are migrated to the new room code via `socket.leave(oldCode)` / `socket.join(newCode)`, then `'lobby_ready'` is emitted on the new code.
+- **Fix `leave_room` Bounce-Back**: `server/index.js` — Confirmed `socket.leave(code)` is called before `io.to(code).emit('room_updated', ...)` so the leaving socket never receives the room update that would bounce it back to the Waiting Room.
+
+## [1.1.31] - 2026-11-19
+### Added
+- **Post-Game Rejoin UI**: `public/client.js` — `resetPostGameState()` clears winner state, strips shake/crown/dead classes, and clears event/recent-answer logs. On `game_over`, hides `#waiting-room-meta`, shows `#waiting-winner-banner` with `"👑 <Winner> WINS!"`, renders winner with crown and dead opponents as `.is-dead`. Post-game controls show `PLAY AGAIN` (host) or `REJOIN LOBBY` (non-host) + `LEAVE ROOM`. `rejoin_status` disables `REJOIN LOBBY` when waiting for host; `lobby_ready` calls `resetPostGameState()` and re-renders fresh lobby.
+- **Shake Removal**: `public/style.css` — Disabled `.panic-shake`, `.cleaver-panic`, and board/active-turn shake animations so cards and board stay steady.
+- **Fixed Prompt Ticket**: `public/style.css` — Added `--arena-bar-width` CSS variable (`min(92vw, 420px)`); prompt ticket locked to `width: var(--arena-bar-width); min-height: 108px;` centered flex layout.
+- **Flush Input Alignment**: `public/style.css` — Answer input row set to `width: var(--arena-bar-width);` with `align-items: stretch` so input left border aligns with prompt ticket left border and SEND button right border aligns with prompt ticket right border.
+
+### Fixed
+- **Post-Game Artifacts**: `public/client.js` — `resetPostGameState()` called on `room_updated`, `leave_room`, and `lobby_recreated` to strip all `.panic-shake`, `.board-shake`, `.is-winner`, `.is-dead` classes and clear `#event-log` / `#recent-answers`.
+
+## [1.1.30] - 2026-11-19
+### Changed
+- **Room Code Randomization on Auto-Return**: `server/gameManager.js` — `resetRoomToLobby(oldCode)` now generates a brand-new unique 4-letter room code, deletes the old code from the rooms Map, stores the room under the new code, and returns `{ oldCode, newCode, room }`. All player states, timers, prompts, and used answers are cleared.
+- **Socket Migration on Auto-Return**: `server/index.js` — Inside the 5000ms `returnTimer`, all remaining sockets in the old room are migrated to the new room code via `socket.leave(oldCode)` / `socket.join(newCode)`, then `'lobby_ready'` is emitted on the new code.
+- **Fix `leave_room` Bounce-Back**: `server/index.js` — Confirmed `socket.leave(code)` is called before `io.to(code).emit('room_updated', ...)` so the leaving socket never receives the room update that would bounce it back to the Waiting Room.
+
+## [1.1.31] - 2026-11-19
+### Changed
+- **Remove Rejoin/Play Again Bloat**: `public/client.js` — Deleted `rejoin_lobby`, `play_again`, `rejoin_status`, `lobby_recreated` handlers and `waitingForHostRejoin` state. Added `returnCountdownInterval` tracker cleared in `resetPostGameState()`. On `game_over`, auto-returns to lobby after 5s with winner showcase (`#waiting-winner-banner` showing `"👑 <WinnerName> WINS!"`, winner card `.is-winner` + crown, others `.is-dead`). `lobby_ready` resets post-game state and re-renders fresh lobby with `START GAME` for host.
+- **Simplify Waiting Room Controls**: `public/index.html` — Removed `#rejoin-lobby-btn` and `#play-again-btn`; only `START GAME` (host) and `LEAVE ROOM` remain.
+- **Cache-Busting**: `public/index.html` bumped to `?v=24b` for `style.css` and `client.js`.
+
+## [1.1.30] - 2026-11-19
+### Changed
+- **Remove Rejoin Queue Bloat**: `server/gameManager.js` — Removed `rejoinQueue`, `rejoinLobby`, `hostPlayAgain`, and `'post_game'` phase logic. Rooms now have only two phases: `'lobby'` and `'playing'`. Added `resetRoomToLobby(roomCode)` helper that clears timers, resets player lives to 3, clears prompts/usedAnswers, and returns the room to lobby state.
+- **Simplify removePlayer**: `server/gameManager.js` — `removePlayer()` now removes the player, clears any active `returnTimer` if the room becomes empty and is deleted, and automatically promotes `room.players[0].id` to `room.hostId` if the host left.
+- **Auto-Return to Lobby**: `server/index.js` — On `game_over`, emits `'game_over'` with `{ winnerId, winnerName, returnDelayMs: 5000 }`, then sets a 5-second `returnTimer` that calls `resetRoomToLobby()` and emits `'lobby_ready'` to the room.
+- **Delete Stale Handlers**: `server/index.js` — Deleted `rejoin_lobby` handler and broken `play_again` handler (was causing `ReferenceError`). Updated `leave_room` and `disconnect` to call `socket.leave(code)` and emit `'room_updated'` to remaining players.
+
+## [1.1.29] - 2026-11-19
+### Added
+- **Post-Game Rejoin UI**: `public/client.js` — `resetPostGameState()` clears winner state, strips shake/crown/dead classes, and clears event/recent-answer logs. On `game_over`, hides `#waiting-room-meta`, shows `#waiting-winner-banner` with `"👑 <Winner> WINS!"`, renders winner with crown and dead opponents as `.is-dead`. Post-game controls show `PLAY AGAIN` (host) or `REJOIN LOBBY` (non-host) + `LEAVE ROOM`. `rejoin_status` disables `REJOIN LOBBY` when waiting for host; `lobby_recreated` calls `resetPostGameState()` and re-renders fresh lobby.
+- **Shake Removal**: `public/style.css` — Disabled `.panic-shake`, `.cleaver-panic`, and board/active-turn shake animations so cards and board stay steady.
+- **Fixed Prompt Ticket**: `public/style.css` — Added `--arena-bar-width` CSS variable (`min(92vw, 420px)`); prompt ticket locked to `width: var(--arena-bar-width); min-height: 108px;` centered flex layout.
+- **Flush Input Alignment**: `public/style.css` — Answer input row set to `width: var(--arena-bar-width);` with `align-items: stretch` so input left border aligns with prompt ticket left border and SEND button right border aligns with prompt ticket right border.
+
+### Fixed
+- **Post-Game Artifacts**: `public/client.js` — `resetPostGameState()` called on `room_updated`, `leave_room`, and `lobby_recreated` to strip all `.panic-shake`, `.board-shake`, `.is-winner`, `.is-dead` classes and clear `#event-log` / `#recent-answers`.
+
+## [1.1.28] - 2026-11-19
+### Added
+- **Post-Game Rejoin Queue**: `server/gameManager.js` — Track `phase` (`'lobby'`, `'playing'`, `'post_game'`) and `rejoinQueue` per room. `rejoinLobby()` lets eliminated players join the rejoin queue after `game_over`, returning `waiting_for_host` status until the host clicks Play Again. `hostPlayAgain()` resets the room to `lobby` phase, clears lives/chopped states, and clears the rejoin queue.
+- **Automatic Host Promotion**: `removePlayer()` now removes leaving players from `rejoinQueue`. If the host leaves during `post_game` and the queue is non-empty, the first queued player is promoted to host and the lobby is immediately recreated (`phase = 'lobby'`, states reset). Otherwise, the first remaining player is promoted.
+- **Socket Events**: `server/index.js` — `rejoin_lobby` handler emits `rejoin_status` to the requester and `room_updated` to the room. `play_again` now uses `hostPlayAgain()` and emits `lobby_recreated` to all room members. `leave_room` and `disconnect` emit `lobby_recreated` when host promotion triggers a lobby reset.
+
+## [1.1.27] - 2026-11-19
+### Fixed
+- **Server Leave Room**: `server/index.js` — Added `socket.on('leave_room', ...)` handler that removes the player from `room.players` via `gameManager.removePlayer`, calls `socket.leave(roomCode)`, resets `socket.roomCode`, and emits `room_updated` to remaining players. Empty rooms are deleted automatically via `removePlayer`.
+- **Client State Guard**: `public/client.js` — `game_started` and `game_state` handlers now ignore events when `!myRoomCode`, preventing a player who already left from being pulled back into a match.
+- **Centered Input Bar**: `public/style.css` — `.arena-bottom-sticky` centered with `display: flex; flex-direction: column; align-items: center;` and input row centered with `width: 100%; max-width: 440px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px;`.
+- **Toast Cache-Busting**: `public/index.html` bumped to `?v=22b` for both `style.css` and `client.js`.
+
+## [1.1.26] - 2026-11-19
+### Fixed
+- **Disappeared In-Game Players**: `public/client.js` — In-game player renderer now explicitly targets `document.getElementById('game-arena-stage')` instead of `document.querySelector('.arena-stage')`, preventing cards from rendering into the wrong (or no) container after the waiting-room arena was split into a separate element.
+- **Leave Room Button**: `public/client.js` — `btnLeaveRoom` emits `leave_room`, resets `myRoomCode`/`lastWinnerId`/`lastWinnerName`, and transitions back to the lobby view.
+- **Waiting Room Wood Background**: `public/index.html` removed the white `.card` wrapper from `#waiting-screen`; `public/style.css` sets `background: transparent; border: none; box-shadow: none;` with full-height flex layout, matching the game screen's dark oak butcher-block background.
+- **Waiting Room Room Info Inside Board**: Room code, category pill, and player count (`X / 6`) moved inside `.waiting-board` (central wooden chopping board). `.waiting-board` styled with `clamp(135px, 34vw, 185px)` sizing, centered flex column with gap 4px.
+- **Waiting Room Card Simplification**: Life stalks (`scallion-lives`) and progress bar (`rarity-bar-bg`) hidden inside `.waiting-arena-stage .player-card` via `display: none !important;` so cards only show scallion, YOU badge / crown, and player name.
+- **Toast Cache-Busting**: `public/index.html` bumped to `?v=22a` for both `style.css` and `client.js`.
+
+## [1.1.25] - 2026-11-19
+### Added
+- **Waiting Room 3×3 Simulation**: `public/client.js` — Extracted `renderArenaPlayers(containerEl, players, options)` shared helper for 3×3 compass slot assignment. Waiting room renders players in `#waiting-arena-stage` with local player at `.slot-local` (YOU badge) and opponents in clockwise compass slots (1–5). Blank chopping board preserved during re-renders.
+- **Post-Game Winner Lobby**: `game_over` transitions back to Waiting Room instead of static overlay. Tracks `lastWinnerId`/`lastWinnerName`. Shows `#waiting-winner-banner` (`"👑 <Winner> WINS!"`), winner card with `.is-winner` + `<span class="winner-crown">👑</span>`, dead opponents with `.is-dead` + chopped scallion avatar. `game_starting` clears winner state and resets cards to `calm`.
+
+### Fixed
+- **Dead DOM References**: Removed `elements.waitingPlayers` (old `#waiting-players` no longer in DOM). Guarded `waiting-player-count` and `waiting-host-message` lookups.
+- **Status Flash Overwrite**: `flashTurnStatus` tracks `statusFlashActive` flag. `updateTurnUI` cancels flash when it becomes local player's turn; preserves active flash (e.g., "Correct! ...") when not local player's turn, letting timer finish before reverting.
+- **Life-Loss Toast**: `"lost a heart"` routed exclusively to `addEventLog(...)` (cell 3,3) — never to any toast container.
+
+## [1.1.24] - 2026-11-18
+### Added
+- **Waiting Room 3x3 Arena Simulation**: `public/index.html` replaces the vertical player list with a live 3×3 arena grid (`#waiting-arena-stage`) showing waiting players around a blank chopping board. Top bar shows room code (copy button), category pill, and player count (`X / 6`). Bottom bar shows host controls (`Start Game`) or waiting message plus `Leave Room`.
+- **Winner Crown**: `.winner-crown` gold crown badge positioned at top edge of winner's `.player-card`.
+- **Dead Scallion State**: `.player-card.is-dead` with muted opacity and grayscale for eliminated players in post-game lobby.
+- **Winner Card State**: `.player-card.is-winner` with gold border and warm glow.
+
+### Fixed
+- **Toast Top-Center Pin**: `#global-toast-container` strictly pinned to top-center using `top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); bottom: auto; right: auto;` — no bottom-right toast rules remain.
+
+## [1.1.23] - 2026-11-18
+### Fixed
+- **Exclusive Status-Line Score Alerts**: `public/client.js` — `answer_result` now routes all score/rarity/answer-validation alerts exclusively to `flashTurnStatus(...)`. Removed `addFeedMessage` and `showToast` calls from in-game answer handling so no toast or activity-feed entry is ever created for answer results. The `console.log('[SUBMIT]', ...)` debug line was removed.
+- **Cleaver Offset**: `public/style.css` — `.hover-cleaver svg` repositioned to `top: -4%; right: -6%; width: 40%;` with `pointer-events: none;` so it hovers diagonally up and to the right without overlapping the centered scallion. Removed idle rotation/transform from `.hover-cleaver` wrapper.
+
+## [1.1.22] - 2026-11-18
+### Fixed
+- **Cache-Bust Mobile CSS**: `public/index.html` — Added `?v=21a3` query strings to `style.css` and `client.js` so mobile Safari immediately loads updated files instead of serving cached versions.
+- **Recent Answers Separated from Event Log**: `#recent-answers` moved from inside `.arena-stage` (grid cell 3,3) to directly below the timer bar inside `.arena-top-sticky`. `#event-log` remains the only feed element inside `.arena-stage` grid cell (3,3).
+- **No Brown Sticky Rectangles**: `.arena-top-sticky` and `.arena-bottom-sticky` explicitly set to `background: transparent; background-color: transparent; box-shadow: none;` across the entire stylesheet including all `@media` queries.
+- **Compact Lobby Toast**: `#global-toast-container` centered with `width: auto; max-width: 90vw; left: 50%; transform: translateX(-50%)`. `.toast` uses `width: max-content; max-width: 100%;` so lobby alerts render as compact pills instead of stretching full-width.
+- **Desktop Cleaver Scaling**: Removed fixed `px` `width`/`height` constraints from `.hover-cleaver`. Cleaver SVG now uses `width: 44%; height: auto; top: 8%; right: 6%;` scaling properly on both desktop and mobile.
+
+## [1.1.21] - 2026-11-18
+### Fixed
+- **Answer Submission**: `public/client.js` refactored into `handleAnswerSubmit()` wired to both form submit and `#send-btn` click (Enter key included). Turn check now reads `sendBtn.disabled` directly so submission only fires when it is the local player's turn. Emits `submit_answer` with `{ roomCode, text }` matching `server/index.js`, with `console.log('[SUBMIT]', ...)` for DevTools verification. Input cleared after successful emit.
+- **Sticky Brown Boxes**: `.arena-top-sticky` and `.arena-bottom-sticky` set to `background: transparent; box-shadow: none;` — no solid brown rectangles behind the prompt ticket or input bar.
+- **Board Scallion & Cleaver**: Center scallion SVG scaled to `height: 52%;` (slightly larger). Cleaver SVG now `position: absolute; top: 10%; right: 8%; width: 42%; transform-origin: center;` hovers diagonally above-right on mobile without crowding the scallion, while staying proportionally visible on desktop.
+
+## [1.1.20] - 2026-11-18
+### Fixed
+- **Answer Submission Restored**: `public/client.js` — Removed dangling `toastContainer` reference (`#toast-container` no longer in DOM) to prevent `TypeError: Cannot read properties of null`. `isMyTurn` state is now consistently set to `false` on `game_starting` and `round_intermission` events (in addition to `game_state`), so `sendBtn.disabled = !isMyTurn` stays in sync across all turn transitions. Answer submission via `socket.emit('submit_answer', ...)` fires cleanly when it IS the local player's turn and input is non-empty.
+- **Sticky Prompt/Timer Alignment**: `public/style.css` — `.arena-top-sticky` now uses `display: flex; flex-direction: column; align-items: center; gap: 8px;` with `padding: max(6px, env(safe-area-inset-top)) 10px 6px;`. `#prompt-banner` has `position: relative; margin: 0 auto;` for centered horizontal placement within the sticky bar.
+
+## [1.1.19] - 2026-11-18
+### Added
+- **Major Event Log**: `#event-log` in grid cell (3,3) of `.arena-stage`, showing up to 3 recent major events (player chopped, eliminated, joined, left) as compact dark translucent pills via `addEventLog()`.
+- **Status-Bar Flash Notifications**: `flashTurnStatus()` displays in-game alerts (correct answers, already-used, invalid) in the `#turn-indicator` above the input bar. A single `statusFlashTimer` ensures new flashes replace older ones and auto-revert to the live turn prompt. All in-game `showToast()` calls route to `flashTurnStatus()`.
+- **Pre-Typing Support**: Answer `<input>` stays enabled at all times; only `#send-btn` is toggled (`disabled` when not your turn). Pre-typed text is preserved — submitting while not your turn does not clear the input. Disabled send button shows a crisp diagonal strikethrough overlay.
+- **Keyboard-Safe Layout**: `#game-screen` uses `min-height: 100dvh; overflow-y: auto;`. `.arena-top-sticky` pins prompt+timer at top; `.arena-bottom-sticky` pins turn status+input at bottom — both remain visible when the mobile keyboard opens.
+
+### Changed
+- **Desktop Layout**: `.arena-stage` max-width widened to 560px.
+- **Toast Cleanup**: `#toast-container` removed from `.arena-stage`; `#global-toast-container` retained for Lobby/Waiting Room only.
+
+## [1.1.18] - 2026-11-18
+### Changed
+- **Status-Bar Flash Notifications**: `public/client.js` adds `flashTurnStatus()` to show in-game alerts (correct answers, already-used, invalid) directly in the `#turn-indicator` status text above the input bar. A single `statusFlashTimer` ensures new flashes replace older ones and auto-revert to the live turn prompt on expiry or turn handover. All in-game `showToast()` calls now route to `flashTurnStatus()` while on the game screen; `#global-toast-container` remains for Lobby/Waiting Room alerts.
+- **Bottom-Right Grid Feed**: `#recent-answers` moved inside `.arena-stage` occupying grid cell (3,3), limited to the 3 most recent items (newest on top) so the cell never overflows. `#toast-container` grid-cell rules removed and hidden.
+- **Flash State Classes**: Added `.status-success`, `.status-error`, `.status-info` for status text color flash states.
+
 ## [1.1.17] - 2026-11-18
 ### Changed
 - **No-Grow Active Highlight**: `.player-card.active` highlight now uses only `border-color` and `box-shadow` glow; `transform: scale(...)` removed so card dimensions never change during active-turn pulses.

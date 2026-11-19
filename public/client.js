@@ -4,13 +4,23 @@ const socket = io();
 
 // --- State & Selectors ---
 let myId = null;
-let myRoomCode = null;
+let currentRoomCode = null;
 let myNickname = '';
 let selectedCategory = 'All';
 let currentFuseEndsAt = null;
 let currentFuseDuration = null;
 let intermissionInterval = null;
+let statusFlashTimer = null;
+let statusFlashActive = false;
+let isMyTurn = false;
+let previousPlayerIds = new Set();
+let lastWinnerId = null;
+let lastWinnerName = null;
 let lastPromptId = null;
+let roomPhase = 'lobby';
+let returnCountdownInterval = null;
+let isPostGameShowcase = false;
+let justLeftRoomCode = null; // debounce: ignore stale room_updated for room we just left
 
 const ERROR_MAP = {
   'need_two_players': 'Need at least 2 players to start!',
@@ -42,9 +52,47 @@ function getOpponentsInTurnOrder(room) {
   return ordered;
 }
 
+function renderArenaPlayers(containerEl, players, options = {}) {
+  const { activePlayerId = null, isLocal = true, isWaitingRoom = false } = options;
+
+  // Remove any previously rendered player cards from the container
+  containerEl.querySelectorAll('.player-card').forEach(c => c.remove());
+
+  const localPlayer = players.find(p => p.id === socket.id);
+  if (localPlayer && isLocal) {
+    const card = createPlayerCard(localPlayer, activePlayerId, true);
+    card.classList.add('slot-local');
+    card.classList.toggle('is-winner', lastWinnerId === localPlayer.id);
+    card.classList.toggle('is-dead', lastWinnerId !== null && lastWinnerId !== localPlayer.id && !localPlayer.alive);
+    if (lastWinnerId === localPlayer.id) {
+      const crown = document.createElement('span');
+      crown.className = 'winner-crown';
+      crown.textContent = '👑';
+      card.insertBefore(crown, card.firstChild);
+    }
+    containerEl.appendChild(card);
+  }
+
+  const opponents = getOpponentsInTurnOrder({ players });
+  const slotClasses = SLOT_MAP[opponents.length] || [];
+  opponents.forEach((p, i) => {
+    const card = createPlayerCard(p, activePlayerId);
+    if (slotClasses[i]) card.classList.add(slotClasses[i]);
+    card.classList.toggle('is-winner', lastWinnerId === p.id);
+    card.classList.toggle('is-dead', lastWinnerId !== null && lastWinnerId !== p.id && !p.alive);
+    if (lastWinnerId === p.id) {
+      const crown = document.createElement('span');
+      crown.className = 'winner-crown';
+      crown.textContent = '👑';
+      card.insertBefore(crown, card.firstChild);
+    }
+    containerEl.appendChild(card);
+  });
+}
+
 const views = {
   lobby: document.getElementById('view-lobby'),
-  waiting: document.getElementById('view-waiting'),
+  waiting: document.getElementById('waiting-screen'),
   game: document.getElementById('view-game'),
 };
 
@@ -54,8 +102,11 @@ const elements = {
   roomCode: document.getElementById('lobby-room-code'),
   waitingCode: document.getElementById('waiting-code'),
   waitingCategory: document.getElementById('waiting-category'),
-  waitingPlayers: document.getElementById('waiting-players'),
   btnStart: document.getElementById('btn-start'),
+  btnLeaveRoom: document.getElementById('btn-leave-room'),
+  waitingArenaStage: document.getElementById('waiting-arena-stage'),
+  waitingWinnerBanner: document.getElementById('waiting-winner-banner'),
+  waitingStatusEl: document.getElementById('waiting-host-message'),
   promptBanner: document.getElementById('prompt-banner'),
   timerBarFill: document.getElementById('timer-bar-fill'),
   turnIndicator: document.getElementById('turn-indicator'),
@@ -63,8 +114,9 @@ const elements = {
   localPlayerSlot: document.getElementById('local-player-slot'),
   answerForm: document.getElementById('answer-form'),
   answerInput: document.getElementById('answer-input'),
+  sendBtn: document.getElementById('send-btn'),
   activityFeed: document.getElementById('activity-feed'),
-  toastContainer: document.getElementById('toast-container'),
+  eventLog: document.getElementById('event-log'),
   globalToastContainer: document.getElementById('global-toast-container'),
   recentAnswers: document.getElementById('recent-answers'),
   centerScallion: document.getElementById('center-scallion'),
@@ -77,20 +129,19 @@ const elements = {
 // --- Helpers ---
 
 function showView(viewName) {
-  Object.values(views).forEach(v => v.classList.add('hidden'));
-  views[viewName].classList.remove('hidden');
+  console.log('[showView] switching to', viewName);
+  Object.values(views).forEach(v => v?.classList.add('hidden'));
+  views[viewName]?.classList.remove('hidden');
 }
 
 function showToast(message, type = 'info') {
   const isGameVisible = !views.game.classList.contains('hidden');
-  const container = isGameVisible ? elements.toastContainer : elements.globalToastContainer;
-  
-  let originalText = '';
   if (isGameVisible) {
-    originalText = elements.turnIndicator.textContent;
-    elements.turnIndicator.classList.add('hidden');
+    flashTurnStatus(message, type);
+    return;
   }
-
+  const container = elements.globalToastContainer;
+  
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
@@ -113,12 +164,78 @@ function showToast(message, type = 'info') {
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => {
       toast.remove();
-      if (isGameVisible) {
-        elements.turnIndicator.classList.remove('hidden');
-        elements.turnIndicator.textContent = originalText;
-      }
     }, 300);
   }, 2000);
+}
+
+function flashTurnStatus(message, type = 'info', durationMs = 1400) {
+  if (statusFlashTimer) {
+    clearTimeout(statusFlashTimer);
+    statusFlashTimer = null;
+  }
+  statusFlashActive = true;
+
+  elements.turnIndicator.classList.remove('status-success', 'status-error', 'status-info');
+
+  const typeMap = {
+    success: 'status-success',
+    error: 'status-error',
+    info: 'status-info',
+    warning: 'status-info',
+  };
+  elements.turnIndicator.classList.add(typeMap[type] || 'status-info');
+  elements.turnIndicator.textContent = message;
+
+  statusFlashTimer = setTimeout(() => {
+    statusFlashTimer = null;
+    statusFlashActive = false;
+    revertTurnStatus();
+  }, durationMs);
+}
+
+function revertTurnStatus() {
+  elements.turnIndicator.classList.remove('status-success', 'status-error', 'status-info');
+  const activePlayerId = document.querySelector('.player-card.active')?.getAttribute('data-player-id');
+  if (activePlayerId === socket.id) {
+    elements.turnIndicator.textContent = "YOUR TURN! ANSWER QUICKLY!";
+  } else {
+    elements.turnIndicator.textContent = "Wait your turn...";
+  }
+}
+
+function resetPostGameState() {
+  lastWinnerId = null;
+  lastWinnerName = null;
+  roomPhase = 'lobby';
+  isPostGameShowcase = false;
+
+  if (returnCountdownInterval) {
+    clearInterval(returnCountdownInterval);
+    returnCountdownInterval = null;
+  }
+
+  const banner = elements.waitingWinnerBanner;
+  if (banner) {
+    banner.classList.add('hidden');
+    banner.textContent = '';
+  }
+
+  const meta = document.getElementById('waiting-room-meta');
+  if (meta) {
+    meta.classList.remove('hidden');
+  }
+
+  document.querySelectorAll('.player-card').forEach(card => {
+    card.classList.remove('panic-shake', 'board-shake', 'is-winner', 'is-dead');
+  });
+
+  const board = document.querySelector('.chopping-block');
+  if (board) {
+    board.classList.remove('board-shake');
+  }
+
+  elements.eventLog.innerHTML = '';
+  elements.recentAnswers.innerHTML = '';
 }
 
 function getScallionAvatarSVG(state) {
@@ -162,6 +279,16 @@ function addFeedMessage(msg) {
   }
 }
 
+function addEventLog(text) {
+  const el = document.createElement('div');
+  el.className = 'event-log-item';
+  el.textContent = text;
+  elements.eventLog.appendChild(el);
+  while (elements.eventLog.children.length > 3) {
+    elements.eventLog.removeChild(elements.eventLog.firstChild);
+  }
+}
+
 function createWinnerOverlay(room) {
   const winner = room.winner ? (room.winner.nickname || room.winner.name) : 'No one';
   const overlay = document.createElement('div');
@@ -181,10 +308,9 @@ function createWinnerOverlay(room) {
     </div>
   `;
   document.body.appendChild(overlay);
-  
+
   if (isHost) {
     document.getElementById('play-again-btn').onclick = () => {
-      socket.emit('play_again', { roomCode: room.code });
       overlay.remove();
     };
   }
@@ -198,6 +324,7 @@ function createWinnerOverlay(room) {
 
 socket.on('connect', () => {
   myId = socket.id;
+  console.log('[socket] connected', myId);
 });
 
 socket.on('disconnect', () => {
@@ -222,28 +349,101 @@ socket.on('categories_list', (list) => {
 });
 
 socket.on('room_updated', (room) => {
+  console.log('[room_updated] received', room?.code, room?.state, room?.players?.length);
+  // Debounce: ignore stale update for room we just left
+  if (justLeftRoomCode && room?.code === justLeftRoomCode) {
+    console.log('[room_updated] debounce: ignoring stale update for just-left room', justLeftRoomCode);
+    return;
+  }
+  // Membership guard: ignore updates for rooms we're no longer in (blocks leave-room bounce-back)
+  if (room && Array.isArray(room.players) && !room.players.some(p => p.id === socket.id)) {
+    console.log('[room_updated] guard: not a member of this room');
+    return;
+  }
   if (document.getElementById('winner-overlay')) return;
-  myRoomCode = room.code;
+  if (isPostGameShowcase) return;
+  if (!room?.code) {
+    console.error('[room_updated] invalid room data', room);
+    return;
+  }
+
+  currentRoomCode = room.code;
+  console.log('[room_updated] set currentRoomCode =', currentRoomCode);
+  if (returnCountdownInterval) return;
+  roomPhase = room.state || room.phase || 'lobby';
+
+  resetPostGameState();
+
+  // Detect player joins/leaves for event log
+  const currentPlayerIds = new Set((room.players || []).map(p => p.id));
+  if (previousPlayerIds.size > 0) {
+    const joined = room.players?.find(p => !previousPlayerIds.has(p.id));
+    const left = [...previousPlayerIds].filter(id => !currentPlayerIds.has(id));
+    if (joined) {
+      addEventLog(`${joined.nickname} joined the room`);
+    }
+    if (left.length > 0) {
+      const leftName = room.players?.find(p => p.id === left[0])?.nickname || 'A player';
+      addEventLog(`${leftName} left the room`);
+    }
+  }
+  previousPlayerIds = currentPlayerIds;
+
   if (room.state === 'playing' || room.state === 'intermission' || room.state === 'starting') {
     socket.emit('request_game_state', { roomCode: room.code });
     return;
   }
+
+  // Waiting room: render 3x3 arena simulation
   elements.waitingCode.textContent = room.code;
-  elements.waitingCategory.textContent = room.category;
-  elements.waitingPlayers.innerHTML = '';
-  room.players.forEach(p => {
-    const li = document.createElement('li');
-    li.textContent = `${p.nickname} ${p.isHost ? '(Host)' : ''}`;
-    elements.waitingPlayers.appendChild(li);
-  });
-  const me = room.players.find(p => p.id === socket.id);
+  elements.waitingCategory.textContent = room.category || 'All Categories';
+  const count = (room.players || []).length;
+  const countEl = document.getElementById('waiting-player-count');
+  if (countEl) countEl.textContent = `${count} / 6`;
+
+  const me = room.players?.find(p => p.id === socket.id);
   elements.btnStart.classList.toggle('hidden', !me || !me.isHost);
+
+  // Show host waiting message if not host
+  const hostMsg = document.getElementById('waiting-host-message');
+  if (hostMsg) hostMsg.classList.toggle('hidden', !!me && me.isHost);
+
+  // Render players in 3x3 arena simulation
+  const stage = elements.waitingArenaStage;
+  if (stage) {
+    renderArenaPlayers(stage, room.players || [], {
+      activePlayerId: null,
+      isLocal: true,
+      isWaitingRoom: true,
+    });
+  }
+
+  console.log('[room_updated] calling showView(waiting)');
   showView('waiting');
 });
 
 socket.on('game_starting', (data) => {
+  // Debounce: ignore stale update for room we just left
+  if (justLeftRoomCode && data?.code === justLeftRoomCode) {
+    console.log('[game_starting] debounce: ignoring stale update for just-left room', justLeftRoomCode);
+    return;
+  }
+  // Membership guard: only process if we're in the room that's starting
+  if (data && Array.isArray(data.players) && !data.players.some(p => p.id === socket.id)) return;
   showView('game');
-  elements.answerInput.disabled = true;
+  elements.sendBtn.disabled = true;
+  isMyTurn = false;
+  lastWinnerId = null;
+  lastWinnerName = null;
+  statusFlashActive = false;
+  if (elements.waitingWinnerBanner) {
+    elements.waitingWinnerBanner.classList.add('hidden');
+    elements.waitingWinnerBanner.textContent = '';
+  }
+  // Show loading state in prompt banner during countdown
+  elements.promptBanner.textContent = 'Loading prompt...';
+  elements.promptBanner.classList.remove('ticket-swap');
+  
   elements.intermissionBanner.classList.remove('hidden');
   
   let count = data.seconds;
@@ -262,6 +462,14 @@ socket.on('game_starting', (data) => {
 });
 
 socket.on('game_state', (room) => {
+  // Debounce: ignore stale update for room we just left
+  if (justLeftRoomCode && room?.code === justLeftRoomCode) {
+    console.log('[game_state] debounce: ignoring stale update for just-left room', justLeftRoomCode);
+    return;
+  }
+  // Membership guard: ignore updates for rooms we're no longer in
+  if (room && Array.isArray(room.players) && !room.players.some(p => p.id === socket.id)) return;
+
   const overlay = document.getElementById('winner-overlay');
   if (overlay) overlay.remove();
 
@@ -274,7 +482,7 @@ socket.on('game_state', (room) => {
     intermissionInterval = null;
   }
   elements.intermissionBanner.classList.add('hidden');
-  elements.answerInput.disabled = (room.state !== 'playing');
+  elements.sendBtn.disabled = (room.state !== 'playing');
 
   // Prompt Animation & Text Update
   if (room.currentPrompt) {
@@ -292,11 +500,11 @@ socket.on('game_state', (room) => {
     }
   }
 
-  // Render Recent Answers from Server-Authoritative List
+  // Render Recent Answers from Server-Authoritative List (3 most recent, newest on top)
   elements.recentAnswers.innerHTML = '';
   if (room.usedAnswersList) {
-    const last12 = room.usedAnswersList.slice(-12);
-    last12.forEach(item => {
+    const last3 = room.usedAnswersList.slice(-3);
+    last3.slice().reverse().forEach(item => {
       const pill = document.createElement('span');
       pill.className = `answer-pill pill-${item.rarity}`;
       pill.textContent = item.answer;
@@ -318,8 +526,8 @@ socket.on('game_state', (room) => {
     b.classList.remove('visible');
   });
 
-  // Render players into 3×3 grid slots on .arena-stage
-  const stage = document.querySelector('.arena-stage');
+  // Render players into 3×3 grid slots on #game-arena-stage
+  const stage = document.getElementById('game-arena-stage');
   if (stage) {
     // Clear legacy containers if present
     if (elements.playersContainer) {
@@ -351,15 +559,27 @@ socket.on('game_state', (room) => {
 
   const isMyTurn = room.activePlayerId === socket.id;
   if (isMyTurn) {
+    // Cancel any active status flash immediately when it becomes our turn
+    if (statusFlashTimer) {
+      clearTimeout(statusFlashTimer);
+      statusFlashTimer = null;
+    }
+    statusFlashActive = false;
+    elements.turnIndicator.classList.remove('status-success', 'status-error', 'status-info');
     elements.turnIndicator.textContent = "YOUR TURN! ANSWER QUICKLY!";
     if (room.state === 'playing') {
-        elements.answerInput.disabled = false;
+        elements.sendBtn.disabled = false;
         elements.answerInput.focus();
     }
     document.body.classList.add('active-turn');
+  } else if (statusFlashActive) {
+    // Don't overwrite an active flash (e.g., "Correct! ...") — let it finish
+    elements.sendBtn.disabled = true;
+    document.body.classList.remove('active-turn');
   } else {
+    elements.turnIndicator.classList.remove('status-success', 'status-error', 'status-info');
     elements.turnIndicator.textContent = "Wait your turn...";
-    elements.answerInput.disabled = true;
+    elements.sendBtn.disabled = true;
     document.body.classList.remove('active-turn');
   }
 });
@@ -395,19 +615,22 @@ function createPlayerCard(p, activePlayerId, isLocal = false) {
 socket.on('answer_result', (res) => {
   if (res.valid) {
     const rarityText = res.rarity.replace('_', ' ').toUpperCase();
-    addFeedMessage(`Correct! ${res.rarity} (+${res.pointsAwarded} pts)`);
-    showToast(`${rarityText}! +${res.pointsAwarded}`, 'success');
+    flashTurnStatus(`Correct! ${rarityText} (+${res.pointsAwarded} pts)`, 'success');
   } else {
     const msg = res.reason === 'used' ? 'That answer was already used!' : 'Invalid answer!';
-    addFeedMessage(msg);
-    showToast(msg, 'error');
+    flashTurnStatus(msg, 'error');
     elements.answerForm.classList.add('shake');
     setTimeout(() => elements.answerForm.classList.remove('shake'), 400);
   }
 });
 
 socket.on('puffer_exploded', (data) => {
-  addFeedMessage(`💥 ${data.playerName} lost a heart!`);
+  addEventLog(`${data.playerName} got chopped!`);
+  document.querySelectorAll('.player-card').forEach(card => {
+    card.classList.remove('panic-shake', 'board-shake');
+  });
+  const board = document.querySelector('.chopping-block');
+  if (board) board.classList.remove('board-shake');
   const flash = document.createElement('div');
   flash.className = 'screen-flash';
   document.body.appendChild(flash);
@@ -415,8 +638,13 @@ socket.on('puffer_exploded', (data) => {
 });
 
 socket.on('round_intermission', (data) => {
-  elements.answerInput.disabled = true;
+  elements.sendBtn.disabled = true;
+  isMyTurn = false;
   elements.recentAnswers.innerHTML = '';
+  // Show loading state in prompt banner during countdown
+  elements.promptBanner.textContent = 'Loading prompt...';
+  elements.promptBanner.classList.remove('ticket-swap');
+  
   elements.intermissionBanner.classList.remove('hidden');
   elements.centerCleaver.classList.add('cleaver-chop');
   setTimeout(() => elements.centerCleaver.classList.remove('cleaver-chop'), 300);
@@ -437,14 +665,129 @@ socket.on('round_intermission', (data) => {
 });
 
 socket.on('game_over', (data) => {
-  document.querySelectorAll('.player-card').forEach(card => card.classList.remove('panic-shake'));
+  if (!currentRoomCode) return;
+  roomPhase = 'post_game';
+  isPostGameShowcase = true;
+
+  document.querySelectorAll('.player-card').forEach(card => {
+    card.classList.remove('panic-shake', 'board-shake');
+  });
+  const board = document.querySelector('.chopping-block');
+  if (board) board.classList.remove('board-shake');
   if (elements.centerCleaver) elements.centerCleaver.classList.remove('cleaver-panic');
   if (elements.timerBarFill) elements.timerBarFill.style.width = '0%';
-  
-  createWinnerOverlay(data);
+
+  lastWinnerId = data.winnerId ? data.winnerId : null;
+  lastWinnerName = data.winnerName || 'No one';
+  addEventLog(`Game over! ${lastWinnerName} wins!`);
+
+  // Transition back to waiting room with winner banner
+  showView('waiting');
+
+  // Hide room meta, show winner banner
+  const meta = document.getElementById('waiting-room-meta');
+  if (meta) meta.classList.add('hidden');
+
+  const banner = elements.waitingWinnerBanner;
+  if (banner && lastWinnerName) {
+    banner.textContent = `👑 ${lastWinnerName} WINS!`;
+    banner.classList.remove('hidden');
+  }
+
+  // Re-render waiting arena with winner/dead states
+  const stage = elements.waitingArenaStage;
+  if (stage && data.players) {
+    renderArenaPlayers(stage, data.players, {
+      activePlayerId: null,
+      isLocal: true,
+      isWaitingRoom: true,
+    });
+  }
+
+  const countEl = document.getElementById('waiting-player-count');
+  if (countEl && data.players) countEl.textContent = `${data.players.length} / 6`;
+
+  const me = data.players.find(p => p.id === socket.id);
+  const isHost = me && me.isHost;
+
+  // Post-game controls: hide START GAME, keep LEAVE ROOM visible
+  elements.btnStart.classList.add('hidden');
+  elements.btnLeaveRoom.classList.remove('hidden');
+
+  const hostMsg = document.getElementById('waiting-host-message');
+  if (hostMsg) hostMsg.classList.add('hidden');
+
+  // Start countdown to auto-return to lobby
+  let returnSeconds = data.returnDelayMs / 1000 || 5;
+  if (elements.waitingStatusEl) {
+    elements.waitingStatusEl.textContent = `Returning to lobby in ${returnSeconds}...`;
+    elements.waitingStatusEl.classList.remove('hidden');
+  }
+
+  if (returnCountdownInterval) {
+    clearInterval(returnCountdownInterval);
+  }
+  returnCountdownInterval = setInterval(() => {
+    returnSeconds--;
+    if (returnSeconds <= 0) {
+      clearInterval(returnCountdownInterval);
+      returnCountdownInterval = null;
+      if (elements.waitingStatusEl) {
+        elements.waitingStatusEl.textContent = '';
+        elements.waitingStatusEl.classList.add('hidden');
+      }
+    } else {
+      elements.waitingStatusEl.textContent = `Returning to lobby in ${returnSeconds}...`;
+    }
+  }, 1000);
+});
+
+socket.on('lobby_ready', (data) => {
+  // Debounce: ignore stale update for room we just left
+  if (justLeftRoomCode && data?.code === justLeftRoomCode) {
+    console.log('[lobby_ready] debounce: ignoring stale update for just-left room', justLeftRoomCode);
+    return;
+  }
+  // Membership guard: ignore if we're not in the new room
+  if (data && Array.isArray(data.room?.players) && !data.room.players.some(p => p.id === socket.id)) return;
+
+  resetPostGameState();
+  // Explicitly clear any lingering countdown text
+  if (elements.waitingStatusEl) {
+    elements.waitingStatusEl.textContent = '';
+    elements.waitingStatusEl.classList.add('hidden');
+  }
+  currentRoomCode = data.code;
+  roomPhase = data.room.state || data.room.phase || 'lobby';
+
+  const stage = elements.waitingArenaStage;
+  if (stage && data.room.players) {
+    renderArenaPlayers(stage, data.room.players, {
+      activePlayerId: null,
+      isLocal: true,
+      isWaitingRoom: true,
+    });
+  }
+
+  const countEl = document.getElementById('waiting-player-count');
+  if (countEl && data.room.players) countEl.textContent = `${data.room.players.length} / 6`;
+
+  elements.waitingCode.textContent = data.room.code;
+  elements.waitingCategory.textContent = data.room.category || 'All Categories';
+
+  const me = data.room.players.find(p => p.id === socket.id);
+  const isHost = me && me.isHost;
+
+  elements.btnStart.classList.toggle('hidden', !me || !me.isHost);
+
+  const hostMsg = document.getElementById('waiting-host-message');
+  if (hostMsg) hostMsg.classList.toggle('hidden', isHost);
+
+  showView('waiting');
 });
 
 socket.on('error_msg', (code) => {
+  console.log('[error_msg] received', code);
   const msg = ERROR_MAP[code] || code;
   showToast(msg, 'error');
 });
@@ -464,6 +807,7 @@ socket.on('player_typing', ({ playerId, text }) => {
 document.getElementById('btn-create').onclick = () => {
   const nickname = elements.nickname.value.trim();
   if (!nickname) return showToast('Please enter a nickname', 'error');
+  console.log('[btn-create] emitting create_room', { nickname, category: selectedCategory });
   socket.emit('create_room', { nickname, category: selectedCategory });
 };
 
@@ -476,15 +820,36 @@ document.getElementById('btn-join').onclick = () => {
 };
 
 elements.btnStart.onclick = () => {
-  socket.emit('start_game', { roomCode: myRoomCode });
+  socket.emit('start_game', { roomCode: currentRoomCode });
 };
+
+elements.btnLeaveRoom.onclick = () => {
+  const codeToLeave = currentRoomCode;
+  if (codeToLeave) justLeftRoomCode = codeToLeave;
+  currentRoomCode = null;
+  resetPostGameState();
+  showView('lobby');
+  socket.emit('leave_room', { roomCode: codeToLeave });
+  // Clear debounce after a tick so subsequent joins work
+  setTimeout(() => { justLeftRoomCode = null; }, 0);
+};
+
+function handleAnswerSubmit() {
+  if (elements.sendBtn.disabled) return;
+  const text = elements.answerInput.value.trim();
+  if (!text) return;
+  socket.emit('submit_answer', { roomCode: currentRoomCode, text });
+  elements.answerInput.value = '';
+}
 
 elements.answerForm.onsubmit = (e) => {
   e.preventDefault();
-  const text = elements.answerInput.value.trim();
-  if (!text) return;
-  socket.emit('submit_answer', { roomCode: myRoomCode, text });
-  elements.answerInput.value = '';
+  handleAnswerSubmit();
+};
+
+elements.sendBtn.onclick = (e) => {
+  e.preventDefault();
+  handleAnswerSubmit();
 };
 
 elements.waitingCode.onclick = async () => {
@@ -501,10 +866,10 @@ elements.waitingCode.onclick = async () => {
 let typingTimeout;
 elements.answerInput.oninput = (e) => {
   const text = e.target.value;
-  if (!myRoomCode) return;
+  if (!currentRoomCode) return;
   if (typingTimeout) return;
   typingTimeout = setTimeout(() => {
-    socket.emit('typing_update', { roomCode: myRoomCode, text });
+    socket.emit('typing_update', { roomCode: currentRoomCode, text });
     typingTimeout = null;
   }, 60);
 };

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;700;800;900&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
   <!-- Global Toast Container for Lobby/Waiting alerts -->
@@ -44,39 +44,51 @@
     </div>
 
     <!-- VIEW 2: WAITING ROOM -->
-    <div id="view-waiting" class="view hidden">
-      <div class="card">
-        <h2 class="waiting-title">Room Code</h2>
-        <div id="waiting-code" class="room-code-badge" title="Click to copy">----</div>
-        <p class="copy-hint">Click code to copy</p>
-        
-        <p class="category-info">Category: <span id="waiting-category">...</span></p>
-        
-        <div class="player-list-container">
-          <h3>Players</h3>
-          <ul id="waiting-players"></ul>
+    <div id="waiting-screen" class="view hidden">
+      <div class="waiting-room-card">
+        <!-- Middle: 3x3 Arena Simulation -->
+        <div id="waiting-arena-stage" class="arena-stage waiting-arena-stage">
+          <div class="chopping-block waiting-board">
+            <div id="waiting-winner-banner" class="waiting-winner-banner hidden"></div>
+            <div id="waiting-room-meta">
+              <div id="waiting-code" class="room-code-badge" title="Click to copy">----</div>
+              <div class="waiting-meta">
+                <span class="waiting-category-pill" id="waiting-category">All Categories</span>
+                <span class="waiting-player-count" id="waiting-player-count">0 / 6</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <button id="btn-start" class="hidden">Start Game</button>
+        <!-- Bottom Bar: Host Controls -->
+        <div class="waiting-bottom-bar">
+          <div class="waiting-host-controls">
+            <button id="btn-start" class="hidden">Start Game</button>
+            <button id="btn-leave-room">Leave Room</button>
+          </div>
+          <div class="waiting-host-message hidden" id="waiting-host-message">Waiting for host to start...</div>
+        </div>
       </div>
     </div>
 
     <!-- VIEW 3: GAME ARENA -->
     <div id="view-game" class="view hidden">
       <div class="game-layout">
-        <!-- Top Section: Prompts & Timer -->
-        <div id="prompt-banner" class="prompt-banner">
-          Loading prompt...
+        <!-- Top Section: Prompts & Timer (sticky when mobile keyboard opens) -->
+        <div class="arena-top-sticky">
+          <div id="prompt-banner" class="prompt-banner">
+            Loading prompt...
+          </div>
+          
+          <div id="timer-bar-container" class="timer-bar-container">
+            <div id="timer-bar-fill" class="timer-bar-fill"></div>
+          </div>
+   
+          <div id="recent-answers" class="recent-answers"></div>
         </div>
-        
-        <div id="timer-bar-container" class="timer-bar-container">
-          <div id="timer-bar-fill" class="timer-bar-fill"></div>
-        </div>
-        
-        <div id="recent-answers" class="recent-answers"></div>
 
         <!-- Middle Section: The Stage -->
-        <div class="arena-stage">
+        <div id="game-arena-stage" class="arena-stage">
           <div id="player-ring" class="player-ring"></div>
           
           <div class="chopping-block">
@@ -96,22 +108,22 @@
             </div>
           </div>
 
-          <!-- Bottom-Right Grid Cell: Toast Notifications -->
-          <div id="toast-container"></div>
+          <!-- Bottom-Right Grid Cell: Event Log -->
+          <div id="event-log" class="event-log"></div>
         </div>
 
-        <!-- Lower-Middle: Status and Local Player -->
-        <div class="status-area">
+        <!-- Lower-Middle: Status and Input (sticky when mobile keyboard opens) -->
+        <div class="arena-bottom-sticky">
           <div id="turn-indicator">Wait your turn...</div>
+          
           <div id="local-player-slot"></div>
-        </div>
-
-        <!-- Bottom: Input -->
-        <div class="input-area">
-          <form id="answer-form">
-            <input type="text" id="answer-input" placeholder="Type answer here..." autocomplete="off">
-            <button type="submit">Send</button>
-          </form>
+          
+          <div class="input-area">
+            <form id="answer-form">
+              <input type="text" id="answer-input" placeholder="Type answer here..." autocomplete="off">
+              <button type="submit" id="send-btn">Send</button>
+            </form>
+          </div>
         </div>
 
         <div class="activity-feed" id="activity-feed"></div>
@@ -127,6 +139,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
+  <script src="client.js?v=29"></script>
 </body>
 </html>

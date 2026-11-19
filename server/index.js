@@ -44,7 +44,35 @@ gameManager.on('round_intermission', (data) => {
 });
 
 gameManager.on('game:over', (data) => {
-  io.to(data.code).emit('game_over', data);
+  const code = data.code;
+  const room = gameManager.getInternalRoom(code);
+  if (!room) return;
+
+  // Clear any existing return timer
+  if (room.returnTimer) {
+    clearTimeout(room.returnTimer);
+    room.returnTimer = null;
+  }
+
+  // Auto-return to lobby after 5 seconds
+  room.returnTimer = setTimeout(async () => {
+    const res = gameManager.resetRoomToLobby(code);
+    if (!res) return;
+    // Migrate all remaining sockets from old room code to new room code
+    const socketsInRoom = await io.in(res.oldCode).fetchSockets();
+    for (const s of socketsInRoom) {
+      s.leave(res.oldCode);
+      s.join(res.newCode);
+    }
+    io.to(res.newCode).emit('lobby_ready', { code: res.newCode, room: res.room });
+  }, 5000);
+
+  io.to(code).emit('game_over', {
+    winnerId: data.winner ? data.winner.id : null,
+    winnerName: data.winner ? data.winner.nickname : null,
+    returnDelayMs: 5000,
+    players: room.players.map(p => ({ id: p.id, nickname: p.nickname, alive: p.alive, isHost: p.isHost })),
+  });
 });
 
 gameManager.on('game_starting', (data) => {
@@ -122,38 +150,30 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('play_again', ({ roomCode }) => {
+  socket.on('leave_room', ({ roomCode }) => {
     const code = (roomCode || '').toUpperCase();
-    const room = gameManager.getInternalRoom(code);
-    
-    if (!room) {
-      return socket.emit('error_msg', 'room_not_found');
-    }
-    if (room.hostId !== socket.id) {
-      return socket.emit('error_msg', 'not_host');
-    }
-
-    // Guard against starting a game with < 2 players
-    if (room.players.length < 2) {
-      return socket.emit('error_msg', 'need_two_players');
-    }
-
-    room.players.forEach(p => {
-      p.hearts = 2; 
-      p.alive = true;
-      p.rarityPoints = 0;
-    });
-
-    room.state = 'lobby'; 
-    const res = gameManager.startGame(code, socket.id);
-    if (!res.ok) {
-      socket.emit('error_msg', res.error);
+    const res = gameManager.removePlayer(code, socket.id);
+    socket.leave(code);
+    socket.roomCode = null;
+    if (res.ok) {
+      const room = gameManager.getInternalRoom(code);
+      if (room) {
+        io.to(code).emit('room_updated', gameManager.getRoomState(code));
+      }
     }
   });
 
   socket.on('disconnect', () => {
     if (socket.roomCode) {
-      gameManager.removePlayer(socket.roomCode, socket.id);
+      const res = gameManager.removePlayer(socket.roomCode, socket.id);
+      socket.leave(socket.roomCode);
+      socket.roomCode = null;
+      if (res.ok) {
+        const room = gameManager.getInternalRoom(socket.roomCode);
+        if (room) {
+          io.to(socket.roomCode).emit('room_updated', gameManager.getRoomState(socket.roomCode));
+        }
+      }
     }
     console.log(`Client disconnected: ${socket.id}`);
   });
