@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Scallion | Chopped</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,18 +64,22 @@
     <!-- VIEW 3: GAME ARENA -->
     <div id="view-game" class="view hidden">
       <div class="game-layout">
+        <!-- Top Section: Prompts & Timer -->
         <div id="prompt-banner" class="prompt-banner">
           Loading prompt...
         </div>
-
+        
+        <div id="timer-bar-container" class="timer-bar-container">
+          <div id="timer-bar-fill" class="timer-bar-fill"></div>
+        </div>
+        
         <div id="recent-answers" class="recent-answers"></div>
 
-        <div class="arena-center">
-          <div id="timer-bar-container" class="timer-bar-container">
-            <div id="timer-bar-fill" class="timer-bar-fill"></div>
-          </div>
-
-          <div id="chopping-block" class="chopping-block">
+        <!-- Middle Section: The Stage -->
+        <div class="arena-stage">
+          <div id="player-ring" class="player-ring"></div>
+          
+          <div class="chopping-block">
             <!-- Poised Cleaver -->
             <div id="center-cleaver" class="hover-cleaver">
               <svg width="80" height="60" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg">
@@ -89,13 +96,17 @@
             </div>
           </div>
 
-          <!-- Integrated Toast/Status Area -->
+          <!-- Bottom-Right Grid Cell: Toast Notifications -->
           <div id="toast-container"></div>
-          <div id="turn-indicator">Wait your turn...</div>
         </div>
 
-        <div id="player-ring" class="player-ring"></div>
+        <!-- Lower-Middle: Status and Local Player -->
+        <div class="status-area">
+          <div id="turn-indicator">Wait your turn...</div>
+          <div id="local-player-slot"></div>
+        </div>
 
+        <!-- Bottom: Input -->
         <div class="input-area">
           <form id="answer-form">
             <input type="text" id="answer-input" placeholder="Type answer here..." autocomplete="off">

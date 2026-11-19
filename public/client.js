@@ -10,6 +10,7 @@ let selectedCategory = 'All';
 let currentFuseEndsAt = null;
 let currentFuseDuration = null;
 let intermissionInterval = null;
+let lastPromptId = null;
 
 const ERROR_MAP = {
   'need_two_players': 'Need at least 2 players to start!',
@@ -21,6 +22,25 @@ const ERROR_MAP = {
   'eliminated': 'You have been eliminated!',
   'not_your_turn': 'Wait for your turn!',
 };
+
+const SLOT_MAP = {
+  1: ['slot-top'],
+  2: ['slot-top-left', 'slot-top-right'],
+  3: ['slot-mid-left', 'slot-top', 'slot-mid-right'],
+  4: ['slot-mid-left', 'slot-top-left', 'slot-top-right', 'slot-mid-right'],
+  5: ['slot-mid-left', 'slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-right'],
+};
+
+function getOpponentsInTurnOrder(room) {
+  const players = room.players;
+  const localIndex = players.findIndex(p => p.id === socket.id);
+  if (localIndex === -1) return players.filter(p => p.id !== socket.id);
+  const ordered = [];
+  for (let i = 1; i < players.length; i++) {
+    ordered.push(players[(localIndex + i) % players.length]);
+  }
+  return ordered;
+}
 
 const views = {
   lobby: document.getElementById('view-lobby'),
@@ -39,7 +59,8 @@ const elements = {
   promptBanner: document.getElementById('prompt-banner'),
   timerBarFill: document.getElementById('timer-bar-fill'),
   turnIndicator: document.getElementById('turn-indicator'),
-  playerRing: document.getElementById('player-ring'),
+  playersContainer: document.getElementById('player-ring'), 
+  localPlayerSlot: document.getElementById('local-player-slot'),
   answerForm: document.getElementById('answer-form'),
   answerInput: document.getElementById('answer-input'),
   activityFeed: document.getElementById('activity-feed'),
@@ -255,9 +276,32 @@ socket.on('game_state', (room) => {
   elements.intermissionBanner.classList.add('hidden');
   elements.answerInput.disabled = (room.state !== 'playing');
 
+  // Prompt Animation & Text Update
   if (room.currentPrompt) {
-    const cat = room.currentPrompt.category || (room.category === 'All' ? 'Random' : room.category);
-    elements.promptBanner.innerHTML = `<span style="color:var(--accent-green); font-size:0.8rem; display:block; text-transform:uppercase;">${cat}</span>${room.currentPrompt.prompt}`;
+    const promptId = room.currentPrompt.id;
+    if (promptId !== lastPromptId) {
+      elements.promptBanner.classList.add('ticket-swap');
+      setTimeout(() => {
+        const cat = room.currentPrompt.category || (room.category === 'All' ? 'Random' : room.category);
+        elements.promptBanner.innerHTML = `<span style="color:var(--accent-green); font-size:0.8rem; display:block; text-transform:uppercase;">${cat}</span>${room.currentPrompt.prompt}`;
+      }, 250);
+      setTimeout(() => {
+        elements.promptBanner.classList.remove('ticket-swap');
+      }, 500);
+      lastPromptId = promptId;
+    }
+  }
+
+  // Render Recent Answers from Server-Authoritative List
+  elements.recentAnswers.innerHTML = '';
+  if (room.usedAnswersList) {
+    const last12 = room.usedAnswersList.slice(-12);
+    last12.forEach(item => {
+      const pill = document.createElement('span');
+      pill.className = `answer-pill pill-${item.rarity}`;
+      pill.textContent = item.answer;
+      elements.recentAnswers.appendChild(pill);
+    });
   }
 
   if (room.activePlayerId) {
@@ -268,39 +312,42 @@ socket.on('game_state', (room) => {
     }
   }
 
-  document.querySelectorAll('.typing-bubble').forEach(b => b.remove());
-
-  elements.playerRing.innerHTML = '';
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  const radius = Math.min(window.innerWidth, window.innerHeight) * 0.3;
-
-  room.players.forEach((p, i) => {
-    const angle = (i / room.players.length) * Math.PI * 2;
-    const x = centerX + radius * Math.cos(angle) - 55;
-    const y = centerY + radius * Math.sin(angle) - 25;
-    const card = document.createElement('div');
-    card.className = `player-card ${p.id === room.activePlayerId ? 'active' : ''} ${!p.alive ? 'eliminated' : ''}`;
-    card.id = `player-${p.id}`;
-    card.style.left = `${x}px`;
-    card.style.top = `${y}px`;
-    const rarityPercent = (p.rarityPoints / 100) * 100;
-    const avatarState = !p.alive ? 'chopped' : (p.id === room.activePlayerId ? 'panic' : 'calm');
-    let livesHtml = '';
-    for(let h=0; h<3; h++) {
-      const filled = h < p.hearts;
-      livesHtml += `<div class="stalk" style="background:${filled ? 'var(--accent-green)' : 'transparent'}; border-style:${filled ? 'solid' : 'dashed'}"></div>`;
-    }
-    card.innerHTML = `
-      <div class="scallion-avatar">${getScallionAvatarSVG(avatarState)}</div>
-      <div class="player-name">${p.nickname}</div>
-      <div class="player-stats">
-        <div class="scallion-lives">${livesHtml}</div>
-        <div class="rarity-bar-bg"><div class="rarity-bar-fill" style="width:${rarityPercent}%"></div></div>
-      </div>
-    `;
-    elements.playerRing.appendChild(card);
+  // Clear all typing bubbles on turn change
+  document.querySelectorAll('.typing-bubble').forEach(b => {
+    b.textContent = '';
+    b.classList.remove('visible');
   });
+
+  // Render players into 3×3 grid slots on .arena-stage
+  const stage = document.querySelector('.arena-stage');
+  if (stage) {
+    // Clear legacy containers if present
+    if (elements.playersContainer) {
+      elements.playersContainer.innerHTML = '';
+      elements.playersContainer.classList.add('hidden');
+    }
+    if (elements.localPlayerSlot) {
+      elements.localPlayerSlot.innerHTML = '';
+      elements.localPlayerSlot.classList.add('hidden');
+    }
+    // Remove any previously rendered player cards from stage
+    stage.querySelectorAll('.player-card').forEach(c => c.remove());
+
+    const localPlayer = room.players.find(p => p.id === socket.id);
+    if (localPlayer) {
+      const card = createPlayerCard(localPlayer, room.activePlayerId, true);
+      card.classList.add('slot-local');
+      stage.appendChild(card);
+    }
+
+    const opponents = getOpponentsInTurnOrder(room);
+    const slotClasses = SLOT_MAP[opponents.length] || [];
+    opponents.forEach((p, i) => {
+      const card = createPlayerCard(p, room.activePlayerId);
+      if (slotClasses[i]) card.classList.add(slotClasses[i]);
+      stage.appendChild(card);
+    });
+  }
 
   const isMyTurn = room.activePlayerId === socket.id;
   if (isMyTurn) {
@@ -317,18 +364,39 @@ socket.on('game_state', (room) => {
   }
 });
 
+function createPlayerCard(p, activePlayerId, isLocal = false) {
+  const card = document.createElement('div');
+  card.className = `player-card ${p.id === activePlayerId ? 'active' : ''} ${!p.alive ? 'eliminated' : ''} ${isLocal ? 'slot-local' : ''}`;
+  card.setAttribute('data-player-id', p.id);
+  card.id = `player-${p.id}`;
+  
+  const youBadge = isLocal ? '<span class="you-badge">YOU</span>' : '';
+  
+  const rarityPercent = (p.rarityPoints / 100) * 100;
+  const avatarState = !p.alive ? 'chopped' : (p.id === activePlayerId ? 'panic' : 'calm');
+  let livesHtml = '';
+  for(let h=0; h<3; h++) {
+    const filled = h < p.hearts;
+    livesHtml += `<div class="stalk" style="background:${filled ? 'var(--accent-green)' : 'transparent'}; border-style:${filled ? 'solid' : 'dashed'}"></div>`;
+  }
+  card.innerHTML = `
+    ${youBadge}
+    <div class="scallion-avatar">${getScallionAvatarSVG(avatarState)}</div>
+    <div class="player-name">${p.nickname}</div>
+    <div class="player-stats">
+      <div class="scallion-lives">${livesHtml}</div>
+      <div class="rarity-bar-bg"><div class="rarity-bar-fill" style="width:${rarityPercent}%"></div></div>
+    </div>
+    <div class="typing-bubble"></div>
+  `;
+  return card;
+}
+
 socket.on('answer_result', (res) => {
   if (res.valid) {
     const rarityText = res.rarity.replace('_', ' ').toUpperCase();
     addFeedMessage(`Correct! ${res.rarity} (+${res.pointsAwarded} pts)`);
     showToast(`${rarityText}! +${res.pointsAwarded}`, 'success');
-    const pill = document.createElement('span');
-    pill.className = `answer-pill pill-${res.rarity}`;
-    pill.textContent = res.matchedAnswer;
-    elements.recentAnswers.prepend(pill);
-    if (elements.recentAnswers.childNodes.length > 12) {
-      elements.recentAnswers.removeChild(elements.recentAnswers.lastChild);
-    }
   } else {
     const msg = res.reason === 'used' ? 'That answer was already used!' : 'Invalid answer!';
     addFeedMessage(msg);
@@ -369,6 +437,10 @@ socket.on('round_intermission', (data) => {
 });
 
 socket.on('game_over', (data) => {
+  document.querySelectorAll('.player-card').forEach(card => card.classList.remove('panic-shake'));
+  if (elements.centerCleaver) elements.centerCleaver.classList.remove('cleaver-panic');
+  if (elements.timerBarFill) elements.timerBarFill.style.width = '0%';
+  
   createWinnerOverlay(data);
 });
 
@@ -378,16 +450,13 @@ socket.on('error_msg', (code) => {
 });
 
 socket.on('player_typing', ({ playerId, text }) => {
-  const card = document.getElementById(`player-${playerId}`);
+  const card = document.querySelector(`.player-card[data-player-id="${playerId}"]`);
   if (!card) return;
-  let bubble = card.querySelector('.typing-bubble');
-  if (!bubble) {
-    bubble = document.createElement('div');
-    bubble.className = 'typing-bubble';
-    card.appendChild(bubble);
-  }
-  bubble.textContent = text ? 'Typing...' : '';
-  if (!text) setTimeout(() => bubble.remove(), 1000);
+  const bubble = card.querySelector('.typing-bubble');
+  if (!bubble) return;
+  
+  bubble.textContent = text;
+  bubble.classList.toggle('visible', text.trim().length > 0);
 });
 
 // --- UI Interactions ---
@@ -437,7 +506,7 @@ elements.answerInput.oninput = (e) => {
   typingTimeout = setTimeout(() => {
     socket.emit('typing_update', { roomCode: myRoomCode, text });
     typingTimeout = null;
-  }, 80);
+  }, 60);
 };
 
 function updateFuseUI() {

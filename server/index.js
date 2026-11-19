@@ -94,7 +94,6 @@ io.on('connection', (socket) => {
     if (!res.ok) {
       socket.emit('error_msg', res.error);
     }
-    // 'game_starting' event is handled by gameManager's bus
   });
 
   socket.on('submit_answer', ({ roomCode, text }) => {
@@ -134,6 +133,11 @@ io.on('connection', (socket) => {
       return socket.emit('error_msg', 'not_host');
     }
 
+    // Guard against starting a game with < 2 players
+    if (room.players.length < 2) {
+      return socket.emit('error_msg', 'need_two_players');
+    }
+
     room.players.forEach(p => {
       p.hearts = 2; 
       p.alive = true;
@@ -145,7 +149,6 @@ io.on('connection', (socket) => {
     if (!res.ok) {
       socket.emit('error_msg', res.error);
     }
-    // 'game_starting' event is handled by gameManager's bus
   });
 
   socket.on('disconnect', () => {

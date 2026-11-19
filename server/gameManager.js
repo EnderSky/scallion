@@ -10,6 +10,7 @@ const MIN_FUSE_MS = 18000; // Increased: 18-32s range
 const MAX_FUSE_MS = 32000;
 const MIN_TURN_WINDOW_MS = 8000; // Increased: bump to 8s
 const POINTS_PER_HEART = 100;
+const MAX_PLAYERS = 6;
 
 const rooms = new Map();
 
@@ -67,6 +68,7 @@ function snapshot(room) {
     players: room.players.map((p) => ({ ...p })),
     activePlayerId: room.activePlayerId,
     usedAnswers: [...room.usedAnswers],
+    usedAnswersList: [...(room.usedAnswersList || [])], // Sync detailed list
     currentPrompt:
       room.currentPrompt
         ? { 
@@ -94,6 +96,7 @@ function loadNewPrompt(room) {
   room.currentPrompt = prompt;
   room.usedPromptIds = [...exclude, prompt.id];
   room.usedAnswers = [];
+  room.usedAnswersList = []; // Clear ordered list for new prompt
   return prompt;
 }
 
@@ -183,6 +186,7 @@ function createRoom(hostId, hostNickname, category) {
     activePlayerId: null,
     currentPrompt: null,
     usedAnswers: [],
+    usedAnswersList: [],
     usedPromptIds: [],
     fuseDurationMs: 0,
     fuseEndsAt: null,
@@ -198,6 +202,9 @@ function joinRoom(code, playerId, playerNickname) {
   const room = rooms.get(String(code || '').toUpperCase());
   if (!room) return { ok: false, error: 'room_not_found' };
   if (room.state !== 'lobby') return { ok: false, error: 'game_already_started' };
+  if (room.players.length >= MAX_PLAYERS) {
+    return { ok: false, error: 'Room is full (max 6 players).' };
+  }
   
   let finalNickname = playerNickname || 'Player';
   let counter = 2;
@@ -249,7 +256,6 @@ function startGame(code, playerId) {
   if (room.state !== 'lobby') return { ok: false, error: 'already_started' };
   if (room.players.length < 2) return { ok: false, error: 'need_two_players' };
 
-  // Prepare first prompt and player
   const prompt = loadNewPrompt(room);
   if (!prompt) {
     room.state = 'lobby';
@@ -295,6 +301,12 @@ function submitAnswer(code, playerId, userInput) {
   if (!verdict.valid) return { ok: false, reason: verdict.reason, matchedAnswer: verdict.matchedAnswer };
 
   room.usedAnswers.push(verdict.matchedAnswer);
+  // Track detailed order for state sync
+  room.usedAnswersList.push({ 
+    answer: verdict.matchedAnswer, 
+    rarity: verdict.rarity 
+  });
+
   const points = RARITY_POINTS[verdict.rarity] || 0;
   player.rarityPoints += points;
 
@@ -307,7 +319,6 @@ function submitAnswer(code, playerId, userInput) {
 
   room.activePlayerId = nextAliveId(room, player.id) || player.id;
   
-  // Adjusted timing logic: if low, bump to 8s, otherwise random
   const remaining = room.fuseEndsAt ? Math.max(0, room.fuseEndsAt - Date.now()) : 0;
   const duration = remaining < MIN_TURN_WINDOW_MS ? MIN_TURN_WINDOW_MS : null;
   startFuse(room, duration);
