@@ -2,6 +2,8 @@
 
 A fast-paced online multiplayer hot-potato category trivia game. Players scramble to answer prompts before they're chopped, with an Overcooked-style chaotic energy and rarity-based scoring.
 
+#### Try it [here](https://scallion.onrender.com)!
+
 ## Tech Stack
 - **Backend**: Node.js, Express, Socket.io
 - **Frontend**: Vanilla HTML5, CSS3, JavaScript (Zero build tools/dependencies)
