@@ -71,7 +71,14 @@ gameManager.on('game:over', (data) => {
     winnerId: data.winner ? data.winner.id : null,
     winnerName: data.winner ? data.winner.nickname : null,
     returnDelayMs: 5000,
-    players: room.players.map(p => ({ id: p.id, nickname: p.nickname, alive: p.alive, isHost: p.isHost })),
+    players: room.players.map(p => ({ 
+      id: p.id, 
+      nickname: p.nickname, 
+      alive: p.alive, 
+      isHost: p.isHost,
+      slotClass: p.slotClass,
+      isBot: p.isBot
+    })),
   });
 });
 
@@ -93,8 +100,8 @@ io.on('connection', (socket) => {
     if (state) socket.emit('game_state', state);
   });
 
-  socket.on('create_room', ({ nickname, category }) => {
-    const res = gameManager.createRoom(socket.id, nickname, category);
+  socket.on('create_room', ({ nickname, category, settings }) => {
+    const res = gameManager.createRoom(socket.id, nickname, category, settings);
     if (res.ok) {
       socket.roomCode = res.room.code;
       socket.join(res.room.code);
@@ -161,6 +168,28 @@ io.on('connection', (socket) => {
         io.to(code).emit('room_updated', gameManager.getRoomState(code));
       }
     }
+  });
+
+  socket.on('add_bot', ({ roomCode, difficulty, slotClass }) => {
+    const code = (roomCode || '').toUpperCase();
+    const room = gameManager.getInternalRoom(code);
+    if (!room) return socket.emit('error_msg', 'room_not_found');
+    // Only host can add bots
+    if (room.hostId !== socket.id) return socket.emit('error_msg', 'not_host');
+    const res = gameManager.addBot(code, difficulty, slotClass);
+    if (!res.ok) return socket.emit('error_msg', res.error);
+    io.to(code).emit('room_updated', gameManager.getRoomState(code));
+  });
+
+  socket.on('remove_bot', ({ roomCode, botId }) => {
+    const code = (roomCode || '').toUpperCase();
+    const room = gameManager.getInternalRoom(code);
+    if (!room) return socket.emit('error_msg', 'room_not_found');
+    // Only host can remove bots
+    if (room.hostId !== socket.id) return socket.emit('error_msg', 'not_host');
+    const res = gameManager.removeBot(code, botId);
+    if (!res.ok) return socket.emit('error_msg', res.error);
+    io.to(code).emit('room_updated', gameManager.getRoomState(code));
   });
 
   socket.on('disconnect', () => {

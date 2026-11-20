@@ -9,6 +9,7 @@ let myNickname = '';
 let selectedCategory = 'All';
 let currentFuseEndsAt = null;
 let currentFuseDuration = null;
+let currentActivePlayerId = null;
 let intermissionInterval = null;
 let statusFlashTimer = null;
 let statusFlashActive = false;
@@ -31,6 +32,7 @@ const ERROR_MAP = {
   'player_not_found': 'You are no longer in this room.',
   'eliminated': 'You have been eliminated!',
   'not_your_turn': 'Wait for your turn!',
+  'room_full': 'Room is full (max 6 players).',
 };
 
 const SLOT_MAP = {
@@ -52,42 +54,158 @@ function getOpponentsInTurnOrder(room) {
   return ordered;
 }
 
+// Human display slot order (left-to-right, top-to-bottom)
+// Local player (YOU) always renders at slot-local (bottom center)
+const HUMAN_SLOT_ORDER = ['slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
+
 function renderArenaPlayers(containerEl, players, options = {}) {
-  const { activePlayerId = null, isLocal = true, isWaitingRoom = false } = options;
+  const { activePlayerId = null, isLocal = true, isWaitingRoom = false, isHost = false, isLobby = false, isHostViewer = false, localPlayer: passedLocalPlayer = null } = options;
 
   // Remove any previously rendered player cards from the container
   containerEl.querySelectorAll('.player-card').forEach(c => c.remove());
 
-  const localPlayer = players.find(p => p.id === socket.id);
-  if (localPlayer && isLocal) {
-    const card = createPlayerCard(localPlayer, activePlayerId, true);
-    card.classList.add('slot-local');
-    card.classList.toggle('is-winner', lastWinnerId === localPlayer.id);
-    card.classList.toggle('is-dead', lastWinnerId !== null && lastWinnerId !== localPlayer.id && !localPlayer.alive);
-    if (lastWinnerId === localPlayer.id) {
-      const crown = document.createElement('span');
-      crown.className = 'winner-crown';
-      crown.textContent = '👑';
-      card.insertBefore(crown, card.firstChild);
-    }
-    containerEl.appendChild(card);
+  // Determine local player
+  const localPlayer = passedLocalPlayer || players.find(p => p.id === socket.id);
+  
+  if (!localPlayer && !isWaitingRoom && !isLobby) {
+    console.warn('[renderArenaPlayers] Local player not found in players array during gameplay!', { socketId: socket.id, players: players.map(p => ({ id: p.id, slotClass: p.slotClass })) });
   }
 
-  const opponents = getOpponentsInTurnOrder({ players });
-  const slotClasses = SLOT_MAP[opponents.length] || [];
-  opponents.forEach((p, i) => {
-    const card = createPlayerCard(p, activePlayerId);
-    if (slotClasses[i]) card.classList.add(slotClasses[i]);
-    card.classList.toggle('is-winner', lastWinnerId === p.id);
-    card.classList.toggle('is-dead', lastWinnerId !== null && lastWinnerId !== p.id && !p.alive);
-    if (lastWinnerId === p.id) {
-      const crown = document.createElement('span');
-      crown.className = 'winner-crown';
-      crown.textContent = '👑';
-      card.insertBefore(crown, card.firstChild);
+  // Separate humans and bots
+  // Players array is in join order (host first, then join order)
+  const humans = players.filter(p => !p.isBot);
+  const bots = players.filter(p => p.isBot);
+
+  // Compute human display slots by skipping self AND bot-occupied slots
+  // Each client sees other humans in HUMAN_SLOT_ORDER, skipping themselves
+  // and skipping any slots occupied by bots
+  const humanDisplaySlots = new Map(); // playerId -> slotClass
+  const botOccupiedSlots = new Set(bots.map(b => b.slotClass).filter(Boolean));
+  
+  if (localPlayer) {
+    const otherHumans = humans.filter(p => p.id !== localPlayer.id);
+    let slotIndex = 0;
+    otherHumans.forEach((human) => {
+      // Find next available slot not occupied by a bot
+      while (slotIndex < HUMAN_SLOT_ORDER.length && botOccupiedSlots.has(HUMAN_SLOT_ORDER[slotIndex])) {
+        slotIndex++;
+      }
+      if (slotIndex < HUMAN_SLOT_ORDER.length) {
+        humanDisplaySlots.set(human.id, HUMAN_SLOT_ORDER[slotIndex]);
+        slotIndex++;
+      }
+    });
+  }
+
+  // Bots keep their explicitly assigned slotClass
+  const botDisplaySlots = new Map();
+  bots.forEach(bot => {
+    if (bot.slotClass) {
+      botDisplaySlots.set(bot.id, bot.slotClass);
     }
-    containerEl.appendChild(card);
   });
+
+  // Build combined slot map for rendering
+  const slotMap = new Map();
+  humanDisplaySlots.forEach((slot, playerId) => {
+    const player = players.find(p => p.id === playerId);
+    if (player) slotMap.set(slot, player);
+  });
+  botDisplaySlots.forEach((slot, playerId) => {
+    const player = players.find(p => p.id === playerId);
+    if (player) slotMap.set(slot, player);
+  });
+
+  // Slot priority order for rendering
+  const allSlots = ['slot-local', 'slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
+
+  allSlots.forEach(slotClass => {
+    let card;
+
+    if (slotClass === 'slot-local') {
+      // slot-local: local player always renders here (bottom center)
+      if (localPlayer) {
+        card = createPlayerCard(localPlayer, activePlayerId, true, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
+        if (localPlayer.isBot) card.classList.add('is-bot');
+        if (localPlayer.isHost) card.classList.add('is-host');
+      }
+    } else {
+      const player = slotMap.get(slotClass);
+      if (player) {
+        // Player in their computed display slot
+        const isLocalPlayer = player.id === socket.id;
+        card = createPlayerCard(player, activePlayerId, isLocalPlayer, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
+        if (player.isBot) card.classList.add('is-bot');
+        if (player.isHost) card.classList.add('is-host');
+      } else if (isWaitingRoom && isHost && isLobby && slotClass !== 'slot-local') {
+        // Empty slot placeholder (only for host in waiting room/lobby)
+        // Check if this slot is actually empty (no human assigned, no bot assigned)
+        const hasHuman = humanDisplaySlots.has(slotClass);
+        const hasBot = botOccupiedSlots.has(slotClass);
+        if (!hasHuman && !hasBot) {
+          card = createPlaceholderCard(slotClass);
+        }
+      } else {
+        // No player and not a placeholder slot - skip
+        return;
+      }
+    }
+
+    if (card) {
+      card.classList.add(slotClass);
+      containerEl.appendChild(card);
+    }
+  });
+}
+
+// Render neutral game start view (all players in position, no active player highlight, no cleaver)
+function renderGameStartView(data, localPlayer) {
+  const stage = document.getElementById('game-arena-stage');
+  if (!stage) return;
+  
+  // Clear existing cards
+  stage.querySelectorAll('.player-card').forEach(c => c.remove());
+  
+  // Clear center cleaver
+  const cleaver = document.getElementById('center-cleaver');
+  if (cleaver) cleaver.style.display = 'none';
+  
+  // Reset chopping board to neutral state
+  const choppingBlock = stage.querySelector('.chopping-block');
+  if (choppingBlock) {
+    choppingBlock.classList.remove('active-turn');
+    choppingBlock.style.borderColor = 'var(--border-dark)';
+    choppingBlock.style.boxShadow = '0 8px 0 #160d08';
+  }
+  
+  // Reset center scallion to calm state
+  const centerScallion = document.getElementById('center-scallion');
+  if (centerScallion) {
+    centerScallion.innerHTML = getScallionAvatarSVG('calm');
+  }
+  const centerPlayerName = document.getElementById('center-player-name');
+  if (centerPlayerName) centerPlayerName.textContent = '';
+  
+  const players = data.players || [];
+  
+  // Use passed localPlayer or find from players
+  const me = localPlayer || players.find(p => p.id === socket.id);
+  
+  // During countdown, use same skip-self logic so each player sees others correctly
+  // Reuse renderArenaPlayers logic but with countdown-specific options
+  renderArenaPlayers(stage, players, {
+    activePlayerId: null,
+    isLocal: true,
+    isWaitingRoom: false,
+    isHost: me?.isHost || false,
+    isLobby: false,
+    isHostViewer: me?.isHost || false,
+    localPlayer: me,
+  });
+
+  // Show intermission banner with countdown
+  elements.intermissionBanner.classList.remove('hidden');
+  elements.intermissionText.textContent = `🔪 Get ready! ${data.firstPlayer} is up first in ${data.seconds}...`;
 }
 
 const views = {
@@ -411,10 +529,15 @@ socket.on('room_updated', (room) => {
   // Render players in 3x3 arena simulation
   const stage = elements.waitingArenaStage;
   if (stage) {
+    const me = room.players?.find(p => p.id === socket.id);
     renderArenaPlayers(stage, room.players || [], {
       activePlayerId: null,
       isLocal: true,
       isWaitingRoom: true,
+      isHost: me?.isHost || false,
+      isLobby: true,
+      isHostViewer: me?.isHost || false,
+      localPlayer: me,
     });
   }
 
@@ -444,7 +567,9 @@ socket.on('game_starting', (data) => {
   elements.promptBanner.textContent = 'Loading prompt...';
   elements.promptBanner.classList.remove('ticket-swap');
   
-  elements.intermissionBanner.classList.remove('hidden');
+  // Render neutral game start view
+  const me = data.players?.find(p => p.id === socket.id);
+  renderGameStartView(data, me);
   
   let count = data.seconds;
   elements.intermissionText.textContent = `🔪 Get ready! ${data.firstPlayer} is up first in ${count}...`;
@@ -476,12 +601,19 @@ socket.on('game_state', (room) => {
   showView('game');
   currentFuseEndsAt = room.fuseEndsAt;
   currentFuseDuration = room.fuseDurationMs;
+  currentActivePlayerId = room.activePlayerId;
 
   if (intermissionInterval) {
     clearInterval(intermissionInterval);
     intermissionInterval = null;
   }
   elements.intermissionBanner.classList.add('hidden');
+  
+  // Show cleaver during gameplay (it was hidden during countdown)
+  if (room.state === 'playing' && elements.centerCleaver) {
+    elements.centerCleaver.style.display = '';
+  }
+  
   elements.sendBtn.disabled = (room.state !== 'playing');
 
   // Prompt Animation & Text Update
@@ -528,6 +660,7 @@ socket.on('game_state', (room) => {
 
   // Render players into 3×3 grid slots on #game-arena-stage
   const stage = document.getElementById('game-arena-stage');
+  const choppingBlock = stage?.querySelector('.chopping-block');
   if (stage) {
     // Clear legacy containers if present
     if (elements.playersContainer) {
@@ -541,19 +674,15 @@ socket.on('game_state', (room) => {
     // Remove any previously rendered player cards from stage
     stage.querySelectorAll('.player-card').forEach(c => c.remove());
 
-    const localPlayer = room.players.find(p => p.id === socket.id);
-    if (localPlayer) {
-      const card = createPlayerCard(localPlayer, room.activePlayerId, true);
-      card.classList.add('slot-local');
-      stage.appendChild(card);
-    }
-
-    const opponents = getOpponentsInTurnOrder(room);
-    const slotClasses = SLOT_MAP[opponents.length] || [];
-    opponents.forEach((p, i) => {
-      const card = createPlayerCard(p, room.activePlayerId);
-      if (slotClasses[i]) card.classList.add(slotClasses[i]);
-      stage.appendChild(card);
+    const me = room.players.find(p => p.id === socket.id);
+    renderArenaPlayers(stage, room.players, {
+      activePlayerId: room.activePlayerId,
+      isLocal: true,
+      isWaitingRoom: false,
+      isHost: me?.isHost || false,
+      isLobby: false,
+      isHostViewer: me?.isHost || false,
+      localPlayer: me,
     });
   }
 
@@ -584,13 +713,20 @@ socket.on('game_state', (room) => {
   }
 });
 
-function createPlayerCard(p, activePlayerId, isLocal = false) {
+function createPlayerCard(p, activePlayerId, isLocal = false, options = {}) {
+  const { showBotDifficulty = false, isLobby = false, isHostViewer = false } = options;
   const card = document.createElement('div');
   card.className = `player-card ${p.id === activePlayerId ? 'active' : ''} ${!p.alive ? 'eliminated' : ''} ${isLocal ? 'slot-local' : ''}`;
   card.setAttribute('data-player-id', p.id);
   card.id = `player-${p.id}`;
   
   const youBadge = isLocal ? '<span class="you-badge">YOU</span>' : '';
+  const botBadge = p.isBot ? '<span class="bot-badge">🤖</span>' : '';
+  const hostBadge = p.isHost ? '<span class="host-badge">HOST</span>' : '';
+  // Remove bot button (only for host in lobby)
+  const removeBotBtn = (p.isBot && isLobby && isHostViewer && !isLocal) ? '<button class="remove-bot-btn" aria-label="Remove bot">×</button>' : '';
+  // Difficulty display for bots in lobby
+  const difficultyBadge = (p.isBot && showBotDifficulty && p.botDifficulty) ? `<span class="difficulty-badge">${p.botDifficulty}</span>` : '';
   
   const rarityPercent = (p.rarityPoints / 100) * 100;
   const avatarState = !p.alive ? 'chopped' : (p.id === activePlayerId ? 'panic' : 'calm');
@@ -601,15 +737,126 @@ function createPlayerCard(p, activePlayerId, isLocal = false) {
   }
   card.innerHTML = `
     ${youBadge}
+    ${botBadge}
+    ${hostBadge}
+    ${removeBotBtn}
     <div class="scallion-avatar">${getScallionAvatarSVG(avatarState)}</div>
     <div class="player-name">${p.nickname}</div>
+    ${difficultyBadge ? `<div class="difficulty-badge-container">${difficultyBadge}</div>` : ''}
     <div class="player-stats">
       <div class="scallion-lives">${livesHtml}</div>
       <div class="rarity-bar-bg"><div class="rarity-bar-fill" style="width:${rarityPercent}%"></div></div>
     </div>
     <div class="typing-bubble"></div>
   `;
+  
+  // Add click handler for remove bot button
+  if (removeBotBtn) {
+    const btn = card.querySelector('.remove-bot-btn');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      socket.emit('remove_bot', { roomCode: currentRoomCode, botId: p.id });
+    });
+  }
+  
   return card;
+}
+
+function createPlaceholderCard(slotClass) {
+  const card = document.createElement('div');
+  card.className = `player-card placeholder`;
+  card.dataset.slotClass = slotClass;
+  card.innerHTML = `
+    <div class="placeholder-content">
+      <span class="placeholder-icon">🤖</span>
+      <span class="placeholder-text">+ Bot</span>
+    </div>
+  `;
+  
+  // Click handler for host to add bot - opens modal
+  card.addEventListener('click', (e) => {
+    showBotDifficultyModal(slotClass);
+  });
+  
+  return card;
+}
+
+function showBotDifficultyModal(slotClass) {
+  // Remove any existing modal
+  const existingModal = document.getElementById('bot-difficulty-modal');
+  if (existingModal) existingModal.remove();
+  
+  const modal = document.createElement('div');
+  modal.id = 'bot-difficulty-modal';
+  modal.className = 'bot-difficulty-modal';
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h3>Add Bot</h3>
+      <div class="difficulty-pills" id="difficulty-pills">
+        <button class="difficulty-pill" data-difficulty="easy">Easy</button>
+        <button class="difficulty-pill" data-difficulty="medium">Medium</button>
+        <button class="difficulty-pill" data-difficulty="hard">Hard</button>
+      </div>
+      <div class="picker-row">
+        <button class="add-bot-btn" id="modal-add-bot-btn">Add Bot</button>
+      </div>
+      <div class="picker-row">
+        <button class="cancel-btn" id="modal-cancel-btn">Cancel</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const addBtn = modal.querySelector('#modal-add-bot-btn');
+  const cancelBtn = modal.querySelector('#modal-cancel-btn');
+  const pills = modal.querySelectorAll('.difficulty-pill');
+  const backdrop = modal.querySelector('.modal-backdrop');
+  
+  let selectedDifficulty = 'medium';
+  
+  // Set initial selection
+  pills.forEach(pill => {
+    if (pill.dataset.difficulty === selectedDifficulty) {
+      pill.classList.add('selected');
+    }
+  });
+  
+  const cleanup = () => {
+    modal.remove();
+  };
+  
+  // Pill selection
+  pills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      pills.forEach(p => p.classList.remove('selected'));
+      pill.classList.add('selected');
+      selectedDifficulty = pill.dataset.difficulty;
+    });
+  });
+  
+  addBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    socket.emit('add_bot', { roomCode: currentRoomCode, difficulty: selectedDifficulty, slotClass });
+    cleanup();
+  });
+  
+  cancelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    cleanup();
+  });
+  
+  backdrop.addEventListener('click', cleanup);
+  
+  // Close on Escape key
+  const onEscape = (e) => {
+    if (e.key === 'Escape') {
+      cleanup();
+      document.removeEventListener('keydown', onEscape);
+    }
+  };
+  document.addEventListener('keydown', onEscape);
 }
 
 socket.on('answer_result', (res) => {
@@ -694,13 +941,17 @@ socket.on('game_over', (data) => {
     banner.classList.remove('hidden');
   }
 
-  // Re-render waiting arena with winner/dead states
+  // Re-render waiting arena with winner/dead states (no placeholders on victory screen)
   const stage = elements.waitingArenaStage;
   if (stage && data.players) {
+    const me = data.players.find(p => p.id === socket.id);
     renderArenaPlayers(stage, data.players, {
       activePlayerId: null,
       isLocal: true,
       isWaitingRoom: true,
+      isHost: me?.isHost || false,
+      isLobby: false, // No placeholders on victory screen
+      isHostViewer: me?.isHost || false,
     });
   }
 
@@ -762,10 +1013,15 @@ socket.on('lobby_ready', (data) => {
 
   const stage = elements.waitingArenaStage;
   if (stage && data.room.players) {
+    const me = data.room.players.find(p => p.id === socket.id);
     renderArenaPlayers(stage, data.room.players, {
       activePlayerId: null,
       isLocal: true,
       isWaitingRoom: true,
+      isHost: me?.isHost || false,
+      isLobby: me?.isHost || false, // Host sees placeholders for empty human slots
+      isHostViewer: me?.isHost || false,
+      localPlayer: me,
     });
   }
 
@@ -792,6 +1048,11 @@ socket.on('error_msg', (code) => {
   showToast(msg, 'error');
 });
 
+socket.on('remove_bot', (data) => {
+  console.log('[remove_bot] received', data);
+  // The room_updated event will handle the UI update
+});
+
 socket.on('player_typing', ({ playerId, text }) => {
   const card = document.querySelector(`.player-card[data-player-id="${playerId}"]`);
   if (!card) return;
@@ -807,8 +1068,9 @@ socket.on('player_typing', ({ playerId, text }) => {
 document.getElementById('btn-create').onclick = () => {
   const nickname = elements.nickname.value.trim();
   if (!nickname) return showToast('Please enter a nickname', 'error');
-  console.log('[btn-create] emitting create_room', { nickname, category: selectedCategory });
-  socket.emit('create_room', { nickname, category: selectedCategory });
+  const settings = {};
+  console.log('[btn-create] emitting create_room', { nickname, category: selectedCategory, settings });
+  socket.emit('create_room', { nickname, category: selectedCategory, settings });
 };
 
 document.getElementById('btn-join').onclick = () => {
@@ -880,20 +1142,50 @@ function updateFuseUI() {
     const percent = (remaining / currentFuseDuration) * 100;
     if (elements.timerBarFill) {
       elements.timerBarFill.style.width = `${percent}%`;
-      if (percent < 30) {
-        const activeId = document.querySelector('.player-card.active')?.id.replace('player-','');
-        if (activeId) {
-          const activeCard = document.getElementById(`player-${activeId}`);
-          if (activeCard) activeCard.classList.add('panic-shake');
+      
+      // Progressive cleaver vibration stages
+      const cleaverSvg = elements.centerCleaver?.querySelector('svg');
+      if (cleaverSvg) {
+        // Remove all vibration classes first
+        cleaverSvg.classList.remove('cleaver-vibrate-horizontal', 'cleaver-vibrate-diagonal-gentle', 'cleaver-vibrate-diagonal-moderate', 'cleaver-vibrate-diagonal-intense', 'cleaver-vibrate-diagonal-final');
+        
+        if (percent < 15) {
+          // Stage 5: Final - diagonal intense + 10% larger
+          cleaverSvg.classList.add('cleaver-vibrate-diagonal-final');
+        } else if (percent < 40) {
+          // Stage 4: Diagonal intense
+          cleaverSvg.classList.add('cleaver-vibrate-diagonal-intense');
+        } else if (percent < 70) {
+          // Stage 3: Diagonal moderate
+          cleaverSvg.classList.add('cleaver-vibrate-diagonal-moderate');
+        } else if (percent < 85) {
+          // Stage 2: Diagonal gentle
+          cleaverSvg.classList.add('cleaver-vibrate-diagonal-gentle');
+        } else if (percent <= 100) {
+          // Stage 1: Horizontal gentle (parallel to floor)
+          cleaverSvg.classList.add('cleaver-vibrate-horizontal');
         }
-        if (elements.centerCleaver) elements.centerCleaver.classList.add('cleaver-panic');
+        // Above 100%: calm horizontal (no vibration class)
+      }
+      
+      // Player panic shake at <30%
+      if (percent < 30) {
+        let activeCard = document.querySelector('.player-card.active');
+        if (!activeCard && currentActivePlayerId) {
+          activeCard = document.getElementById(`player-${currentActivePlayerId}`);
+        }
+        if (activeCard) activeCard.classList.add('panic-shake');
       } else {
         document.querySelectorAll('.panic-shake').forEach(el => el.classList.remove('panic-shake'));
-        if (elements.centerCleaver) elements.centerCleaver.classList.remove('cleaver-panic');
       }
     }
   } else if (currentFuseEndsAt) {
     if (elements.timerBarFill) elements.timerBarFill.style.width = `100%`;
+    // Reset cleaver to calm (horizontal)
+    const cleaverSvg = elements.centerCleaver?.querySelector('svg');
+    if (cleaverSvg) {
+      cleaverSvg.classList.remove('cleaver-vibrate-horizontal', 'cleaver-vibrate-diagonal-gentle', 'cleaver-vibrate-diagonal-moderate', 'cleaver-vibrate-diagonal-intense', 'cleaver-vibrate-diagonal-final');
+    }
   }
 }
 setInterval(updateFuseUI, 50);

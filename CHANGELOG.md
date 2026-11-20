@@ -1,5 +1,278 @@
 # CHANGELOG - Scallion
 
+## [1.1.82] - 2026-11-20
+### Reverted
+- **Polar Positioning Reverted to Grid**: `public/style.css`, `public/client.js` — Polar positioning experiment reverted due to positioning issues. Restored original 3×3 grid layout with slot-based positioning.
+- **Cache-Busting**: `public/index.html` bumped to `?v=78` for `style.css` and `?v=79` for `client.js`.
+
+## [1.1.81] - 2026-11-20
+### Added
+- **Polar Positioning Arena Layout**: `public/style.css`, `public/client.js` — Complete overhaul of player positioning:
+  - Replaced fixed 3×3 grid with polar positioning around the chopping board
+  - Players positioned on a circle around the board based on their semantic slot
+  - Dynamic radius adjusts based on player count (more players = slightly larger radius)
+  - Local player (YOU) always at bottom center (`slot-local`)
+  - Other players positioned at semantic angles:
+    - `slot-top`: -90° (12 o'clock, top center)
+    - `slot-top-right`: -30° (1 o'clock)
+    - `slot-mid-right`: 60° (3 o'clock)
+    - `slot-mid-left`: 120° (9 o'clock)
+    - `slot-top-left`: -150° (11 o'clock)
+  - Dynamic radius adjusts with player count (45% → 54%)
+  - Smooth transitions (0.3s) for join/leave animations
+  - Works in lobby, game arena, and victory screen
+  - Placeholders positioned at correct polar angles
+- **Cache-Busting**: `public/index.html` bumped to `?v=77` for `style.css` and `?v=78` for `client.js`.
+
+## [1.1.80] - 2026-11-20
+### Fixed
+- **Game Start Countdown Text**: `public/client.js` — Fixed `renderGameStartView` to properly set intermission text ("Get ready! X is up first in N...") instead of showing default "NEW PROMPT INCOMING...". Removed buggy code referencing undefined `card`/`slotClass` variables.
+- **Golden Outline on Active Turn**: `public/client.js` — Fixed `game_state` handler to query `.chopping-block` element and add/remove `active-turn` class for golden outline glow when local player's turn.
+- **Lobby Bot Placeholders on Return**: `public/client.js` — `lobby_ready` handler now uses `isLobby: true` for host, so bot placeholders and empty human slots reappear correctly when returning to lobby after game over.
+- **Cache-Busting**: `public/index.html` bumped to `?v=76` for `style.css` and `?v=77` for `client.js`.
+
+## [1.1.79] - 2026-11-20
+### Fixed
+- **Bot-Aware Human Slot Skipping**: `public/client.js` — Client now skips bot-occupied slots when assigning human display slots:
+  - When computing human display slots, client builds `botOccupiedSlots` from bot `slotClass` values
+  - Human display assignment iterates through `HUMAN_SLOT_ORDER`, skipping both self AND bot-occupied slots
+  - Example: Bot at `slot-top` → 2nd human gets `slot-top-left`, 3rd human gets `slot-top-right` (skips `slot-top`)
+  - When new player joins, client recalculates next available human slot based on current bot positions
+  - Placeholders only show for truly empty slots (no human, no bot)
+- **Cache-Busting**: `public/index.html` bumped to `?v=75` for `style.css` and `?v=76` for `client.js`.
+
+## [1.1.78] - 2026-11-20
+### Fixed
+- **Self-Skip Human Display Logic**: `server/gameManager.js`, `public/client.js` — Complete redesign of human display:
+  - Server no longer assigns human display slots; **client computes display by skipping self**
+  - **HUMAN_SLOT_ORDER**: `['slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-left', 'slot-mid-right']` — left-to-right, top-to-bottom
+  - Each client sees OTHER humans in order, skipping themselves:
+    - Host (alone): no display slot
+    - 2nd player joins: host sees them at slot-top-left; they see host at slot-top-left
+    - 3rd player joins: host sees them at slot-top; 2nd player sees host at slot-top-left, 3rd at slot-top-right
+    - Each client skips themselves in the sequence
+  - **Bots**: Placed at clicked placeholder; don't affect human slot sequence
+  - **renderArenaPlayers**: Computes human display slots by filtering out local player, assigns HUMAN_SLOT_ORDER sequentially
+  - **Game start countdown**: Uses same skip-self logic so each player sees others correctly
+- **Cache-Busting**: `public/index.html` bumped to `?v=74` for `style.css` and `?v=75` for `client.js`.
+
+## [1.1.77] - 2026-11-20
+### Fixed
+- **Lobby Slot Occupied Bug Fixed (Standardized Human Slots)**: `server/gameManager.js`, `public/client.js` — Complete overhaul of human slot assignment:
+  - **HUMAN_SLOT_ORDER**: `['slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-left', 'slot-mid-right']` — left-to-right, top-to-bottom
+  - **nextHumanSlot()**: Returns next available human slot, skipping bot-occupied ones
+  - **assignHumanSlots()**: Host gets first human slot, joining players get next available
+  - **Local player (YOU)** always renders at `slot-local` (bottom middle) on own screen
+  - **Cross-client consistency**: Host sees new player in next human slot; new player sees host in that same slot
+  - **Bots**: Placed at clicked placeholder; don't affect human slot sequence
+  - **renderArenaPlayers**: Local player included in slotMap with actual server slotClass for lobby/waiting room, so their slot shows occupied (no phantom placeholder)
+- **Cache-Busting**: `public/index.html` bumped to `?v=73` for `style.css` and `?v=74` for `client.js`.
+
+## [1.1.76] - 2026-11-20
+### Fixed
+- **Cleaver Animation Overhaul**: `public/style.css`, `public/client.js` — Complete redesign:
+  - Removed `cleaverVibrateIntense` stage
+  - Added horizontal (parallel to floor) as first vibration stage
+  - Progression: Calm horizontal → Horizontal gentle → Diagonal gentle → Diagonal moderate → Diagonal intense → Diagonal final (10% larger)
+  - No descent/translation - cleaver stays in position, only rotates/vibrates
+  - Size constant (1.0x) until final stage, then 10% growth (1.10x)
+  - Slower, more deliberate vibration at each stage
+- **Cache-Busting**: `public/index.html` bumped to `?v=72` for `style.css` and `?v=73` for `client.js`.
+
+## [1.1.75] - 2026-11-20
+### Fixed
+- **Standardized Modal Button Spacing**: `public/style.css` — Consistent 16px vertical gap between difficulty pills, "Add Bot", and "Cancel" buttons in bot picker modal.
+- **Cleaver Diagonal Descent & Growth**: `public/style.css` — Cleaver now moves diagonally down-left towards center of chopping board (translateX negative, translateY positive) while growing slightly (scale 1→1.02→1.05→1.1→1.15) at each vibration stage.
+- **Waiting Room Local Player at Bottom**: `public/client.js` — `renderArenaPlayers` now correctly renders local player in `slot-local` (bottom center) during waiting room, with other players in their compass slots. Fixes "lobby screen" issues where local player was missing or in wrong position.
+- **Cache-Busting**: `public/index.html` bumped to `?v=71` for `style.css` and `?v=72` for `client.js`.
+
+## [1.1.74] - 2026-11-20
+### Fixed
+- **Local Player at Bottom During Gameplay**: `public/client.js` — Fixed `renderArenaPlayers` to reliably render local player in `slot-local` (bottom center) during gameplay. Added `localPlayer` parameter passing from `game_state` handler, fallback lookup with warning if not found.
+- **Countdown View Shows Real Positions**: `public/client.js` — `renderGameStartView` now shows ALL players in their assigned compass slots during 3-second countdown (no one in slot-local). Local player moves to bottom only when gameplay starts.
+- **Cache-Busting**: `public/index.html` bumped to `?v=70` for `style.css` and `?v=71` for `client.js`.
+
+## [1.1.73] - 2026-11-20
+### Fixed
+- **Slot Occupied Error Fixed**: `public/client.js` — `renderArenaPlayers` now includes local player in slotMap for lobby/waiting room, so host's occupied slot (slot-top) doesn't show a placeholder. Fixes "bot occupied" error when clicking middle-top slot.
+- **Player Distribution Per Group Size**: `server/gameManager.js` — `redistributePlayersEvenly()` now spaces players evenly per group size:
+  - 2 players: slot-top + slot-mid-left (opposite)
+  - 3 players: top row (slot-top, slot-top-left, slot-top-right)
+  - 4 players: slot-top + slot-top-left + slot-mid-left + slot-mid-right
+  - 5+ players: all 5 compass slots
+- **Game Ending Logic Overhauled**: `server/gameManager.js` — Game now ends when **0 humans alive** (was ≤1). If only bots remain, a random surviving bot wins. If 1 human + bots remain, game continues.
+- **Victory Screen Shows Dead Players**: `server/index.js`, `public/client.js` — `game_over` event now includes `slotClass` and `isBot` for all players. Victory screen renders all players (alive/dead) in their positions without placeholders.
+- **Cleaver Animation Refined**: `public/style.css`, `public/client.js` — More descent toward scallion at each stage (0→2→5→10→16px), slower ramp-up (0.6s→0.4s→0.3s→0.2s), larger dramatic swings at max intensity but slower frequency.
+- **Mobile Difficulty Picker Font Scaling**: `public/style.css` — `.difficulty-pill` now scales to 0.75rem on mobile, matching Add Bot/Cancel buttons.
+- **Cache-Busting**: `public/index.html` bumped to `?v=69` for `style.css` and `?v=70` for `client.js`.
+
+## [1.1.72] - 2026-11-20
+### Fixed
+- **Lobby Bot Placement & Game Redistribution**: `server/gameManager.js` — Complete rewrite of slot assignment logic:
+  - **Lobby**: Bots placed EXACTLY where host clicks placeholder; humans auto-fill remaining compass slots in join order via `assignHumanSlots()`.
+  - **Game Start**: All players redistributed evenly around 5 compass slots via `redistributePlayersEvenly()` (host first, then humans by join order, then bots by slot priority).
+  - **Join/Leave/Remove Bot**: `assignHumanSlots()` called to re-balance human slots while preserving bot positions.
+  - Removed `FIXED_SLOTS` / `reassignFixedSlots` / `reassignBotSlots` / `getNextHumanSlot` — replaced with simpler `COMPASS_SLOTS` + `assignHumanSlots()` + `redistributePlayersEvenly()`.
+- **Cache-Busting**: `public/index.html` bumped to `?v=68` for `style.css` and `?v=69` for `client.js`.
+
+## [1.1.71] - 2026-11-20
+### Fixed
+- **Bot Picker Button Spacing**: `public/style.css` — Added 16px margin between "Add Bot" and "Cancel" buttons in modal for better visual separation.
+- **Cleaver Progressive Chop Animation**: `public/style.css` — Cleaver now progressively moves closer to scallion (translateY) while vibrating: gentle (1px down), moderate (3-4px down), intense (6-8px down), diagonal (10-13px down). Creates visual tension of impending chop.
+- **Active Player Gold Outline**: `public/style.css` — Chopping board gets gold border + glow (`box-shadow: 0 0 30px var(--accent-gold)`) when local player is active (via `.active-turn .chopping-block`). Already functional via body class toggle.
+- **Cache-Busting**: `public/index.html` bumped to `?v=67` for `style.css` and `?v=68` for `client.js`.
+
+## [1.1.70] - 2026-11-20
+### Fixed
+- **Bot Picker Modal - Pill Selection**: `public/client.js`, `public/style.css` — Changed modal to use horizontal pill buttons for difficulty selection (Easy/Medium/Hard) with larger spacing, replacing dropdown.
+- **Cleaver Visibility Restored**: `public/client.js` — Cleaver now shows during gameplay (was hidden after countdown and never re-shown). Added display logic in `game_state` handler for `state: 'playing'`.
+- **Host Visibility Fixed**: `server/gameManager.js`, `public/client.js` — Removed `slot-local` from server slots (it's client-side only). Host now gets `slot-top` on server, renders as `slot-local` on own client. Other clients see host in correct compass position.
+- **Bot Behavior Overhauled**: `server/gameManager.js` — Bots now slower (Easy: 3-6s, Medium: 2-4s, Hard: 1-2.5s) with chance to not answer (Easy: 35%, Medium: 15%, Hard: 3%). Added `BOT_NO_ANSWER_CHANCE` config.
+- **Cache-Busting**: `public/index.html` bumped to `?v=66` for `style.css` and `?v=67` for `client.js`.
+
+## [1.1.69] - 2026-11-20
+### Fixed
+- **Red X Button Size Matched to Bot Badge**: `public/style.css` — `.remove-bot-btn` now 22px desktop / 20px mobile with 4px border-radius to match `.bot-badge` visual height exactly.
+- **Bot Difficulty Picker Converted to Modal**: `public/client.js`, `public/style.css` — Replaced inline picker with centered modal dialog (`#bot-difficulty-modal`) with backdrop, eliminating mobile overflow issues. Added Escape key and backdrop click to close.
+- **Chopper Animation Restored with Progressive Vibration**: `public/style.css`, `public/client.js` — Cleaver now hovers diagonally above-right, then vibrates in 4 stages: gentle (60-85% fuse), moderate (30-60%), intense (10-30%), diagonal intense (<10%). Restores pre-regression behavior.
+- **Fixed Slot Assignment & Even Distribution**: `server/gameManager.js` — Implemented `FIXED_SLOTS` array for deterministic join-order slot assignment (Host=slot-local, P2=slot-top, P3=slot-top-left, P4=slot-top-right, P5=slot-mid-left, P6=slot-mid-right). Added `redistributePlayersEvenly()` on game start and `reassignFixedSlots()`/`reassignBotSlots()` on player/bot leave to maintain consistent positions across all clients.
+- **Bot Slot Consistency**: `server/gameManager.js` — Bots added at clicked placeholder slot; humans keep fixed slots; bots fill remaining SLOT_PRIORITY slots. Slot reassignment on join/leave ensures no conflicts across client views.
+- **Cache-Busting**: `public/index.html` bumped to `?v=65` for `style.css` and `?v=66` for `client.js`.
+
+## [1.1.68] - 2026-11-20
+### Fixed
+- **Yellow Outline/Shaking/Chopper Missing During Gameplay**: `public/client.js` — Fixed `renderArenaPlayers` to pass `activePlayerId` to `createPlayerCard` (was passing `null`), restoring yellow outline on active player. Added `currentActivePlayerId` tracking in `game_state` handler and fallback logic in `updateFuseUI` to ensure panic-shake and cleaver-panic animations trigger correctly during gameplay.
+- **Slot Occupied Error Fixed**: `server/gameManager.js` — `addBot()` now automatically finds next available slot if requested slot is occupied, eliminating "slot_occupied" errors when host is displayed on another player's screen.
+- **Host Red X Visibility**: `public/client.js`, `public/style.css` — Fixed `renderArenaPlayers` to pass `isLobby` and `isHostViewer` to `createPlayerCard`, ensuring host sees red X buttons on bot cards in lobby.
+- **Bot Name Uniqueness**: `server/gameManager.js` — `createBot()` now accepts `usedNames` array to ensure each bot gets a unique name.
+- **Game Start Neutral State Preserved**: `public/client.js` — `renderGameStartView()` correctly shows neutral state (no active highlight, no cleaver) during countdown; gameplay animations restore properly after countdown via `game_state` handler.
+- **Cache-Busting**: `public/index.html` bumped to `?v=64` for `style.css` and `client.js`.
+
+## [1.1.67] - 2026-11-20
+### Fixed
+- **No Duplicate Bot Names**: `server/gameManager.js` — `createBot()` now accepts `usedNames` array to ensure each bot gets a unique name.
+- **Slot Occupied Error Fixed**: `server/gameManager.js` — `addBot()` now passes used bot names to `createBot()` to prevent duplicate names; client sends `slotClass` from placeholder correctly.
+- **Host Sees Red X in Lobby**: `public/client.js` — `createPlayerCard()` now receives `isLobby` and `isHostViewer` options; red X only shows for host in lobby on bot cards.
+- **Red X Button Size**: `public/style.css` — `.remove-bot-btn` reduced to 16px desktop / 14px mobile for better visual balance.
+- **Bot Names Unique**: `server/gameManager.js` — `createBot()` filters used names to ensure each bot gets a unique creative name.
+- **Cache-Busting**: `public/index.html` bumped to `?v=62` for `style.css` and `client.js`.
+
+## [1.1.66] - 2026-11-20
+### Fixed
+- **Red X Button Lobby-Only**: `public/client.js`, `public/style.css` — `.remove-bot-btn` now only appears in lobby (not in-game), only for host, and only on bot cards (not local player). Button is always visible (no hover required) and smaller (16px desktop, 14px mobile).
+- **Game End Logic Fixed**: `server/gameManager.js` — Game only ends when fewer than 2 human players remain alive. Bots don't count toward player count for game ending. If 1 human + bots remain, game continues. If 0 humans, game ends.
+- **Bot Tag Position**: `public/style.css` — Bot badge moved to top-left to avoid overlap with red X button at top-right.
+- **Bot Difficulty Display**: `public/client.js`, `public/style.css` — Added `.difficulty-badge` showing bot difficulty (Easy/Medium/Hard) below bot names in waiting room only.
+- **Bot Tag Position**: `public/style.css` — Bot badge moved to top-left to avoid overlap with red X button at top-right.
+- **Cache-Busting**: `public/index.html` bumped to `?v=59` for `style.css` and `client.js`.
+
+## [1.1.65] - 2026-11-20
+### Fixed
+- **Critical: normalize is not defined**: `server/gameManager.js` — Added `normalize` import from `questionLoader` to fix ReferenceError in `pickBotAnswer`.
+- **Shorter, Sweeter Bot Names**: `server/gameManager.js` — `BOT_NAMES` simplified to single-word herb names (Chive, Basil, Thyme, Sage, Rosemary, Dill, Mint, Parsley, Cilantro, Oregano, Tarragon, Chervil, Marjoram, Savory, BayLeaf) — no truncation, easy to say.
+- **Bot Picker Mobile Overflow**: `public/style.css` — Reduced padding, font sizes, and gaps in `.bot-difficulty-picker` to fit within placeholder on mobile.
+- **Red X Button**: `public/style.css` — `.remove-bot-btn` now smaller (18px → 18px, then 16px on mobile), always visible (no hover required), same height as tags.
+- **Difficulty Display in Lobby**: `public/client.js`, `public/style.css` — Added `.difficulty-badge` showing bot difficulty (Easy/Medium/Hard) below bot names in waiting room only.
+- **Mobile Lobby Text Overflow**: `public/style.css` — Comprehensive responsive fixes for lobby inputs, labels, buttons, category pills, and bot difficulty picker at 600px and 480px breakpoints.
+- **Bot Names Simplified**: `server/gameManager.js` — Replaced LLM-style names with single-word herb names (Chive, Basil, Thyme, Sage, etc.) — no truncation, easy to say.
+- **Removed Confirmation Dialog**: `public/client.js` — Bot removal now immediate on click, no confirmation popup.
+
+### Cache-Busting
+- `public/index.html` bumped to `?v=57` for `style.css` and `client.js`.
+### Fixed
+- **Critical: normalize is not defined**: `server/gameManager.js` — Added `normalize` import from `questionLoader` to fix ReferenceError in `pickBotAnswer`.
+- **Shorter, Sweeter Bot Names**: `server/gameManager.js` — `BOT_NAMES` simplified to single-word herb names (Chive, Basil, Thyme, Sage, Rosemary, Dill, Mint, Parsley, Cilantro, Oregano, Tarragon, Chervil, Marjoram, Savory, BayLeaf) — no truncation, easy to say.
+- **Bot Picker Mobile Overflow**: `public/style.css` — Reduced padding, font sizes, and gaps in `.bot-difficulty-picker` to fit within placeholder on mobile.
+- **Red X Button**: `public/style.css` — `.remove-bot-btn` now smaller (18px → 18px, then 16px on mobile), always visible (no hover required), same height as tags.
+- **Difficulty Display in Lobby**: `public/client.js`, `public/style.css` — Added `.difficulty-badge` showing bot difficulty (Easy/Medium/Hard) below bot names in waiting room only.
+- **Mobile Lobby Text Overflow**: `public/style.css` — Comprehensive responsive fixes for lobby inputs, labels, buttons, category pills, and bot difficulty picker at 600px and 480px breakpoints.
+- **Bot Names Simplified**: `server/gameManager.js` — Replaced LLM-style names with single-word herb names (Chive, Basil, Thyme, Sage, etc.) — no truncation, easy to say.
+- **Removed Confirmation Dialog**: `public/client.js` — Bot removal now immediate on click, no confirmation popup.
+
+### Cache-Busting
+- `public/index.html` bumped to `?v=56` for `style.css` and `client.js`.
+
+## [1.1.63] - 2026-11-20
+
+## [1.1.61] - 2026-11-19
+### Fixed
+- **Host Visibility in Lobby**: `server/gameManager.js` — `joinRoom()` now moves host from `slot-local` to next available compass slot when a new player joins; new player gets `slot-local`. Host now visible to joiners in their assigned slot.
+- **Game Start Overlay Covers Previous State**: `public/style.css` — `.intermission-banner` now has `background: rgba(0,0,0,0.7)` and `z-index: 1000` to fully cover previous game state (shaking players, etc.) during countdown.
+- **Bot Difficulty Picker Fits Placeholder**: `public/style.css` — `.bot-difficulty-picker` now uses `inset: 3px` to account for placeholder's 3px dashed border, with reduced padding/border to fit exactly within placeholder content area.
+- **Cache-Busting**: `public/index.html` bumped to `?v=51` for `style.css` and `client.js`.
+
+## [1.1.61] - 2026-11-19
+### Fixed
+- **Player Visibility in Lobby**: `server/gameManager.js`, `public/client.js` — Fixed `joinRoom()` to assign each new player the next available compass slot (instead of always `slot-local`), preventing slot conflicts. Local player always renders in `slot-local` on their own screen; other players render in their assigned slots.
+- **Mutual Player Visibility**: `public/client.js` — `renderArenaPlayers()` now correctly renders all players in their assigned slots; host moves to next available slot when new players join, ensuring all players see each other.
+- **Cache-Busting**: `public/index.html` bumped to `?v=49` for `style.css` and `client.js`.
+
+## [1.1.60] - 2026-11-19
+### Fixed
+- **Auto-Return to Lobby Preserves Bot Functionality**: `public/client.js` — `lobby_ready` handler now passes `isHost` to `renderArenaPlayers`, restoring bot placeholder visibility after auto-return from game over.
+- **Game Ends When Only 1 Human Remains**: `server/gameManager.js` — `checkWinOrContinue()` and `removePlayer()` now count human players (not bots) for win conditions. With 2 real + 1 bot, if bot dies and a real player leaves, game ends correctly.
+- **Host Visible to All Players**: `server/gameManager.js` — `joinRoom()` moves host from `slot-local` to next compass slot when a player joins, ensuring host is visible in their assigned slot to all players.
+- **Cache-Busting**: `public/index.html` bumped to `?v=47` for `style.css` and `client.js`.
+
+## [1.1.59] - 2026-11-19
+### Fixed
+- **Dropdown Difficulty Selector**: `public/client.js`, `public/style.css` — Reverted to aesthetic `<select>` dropdown in 3-row layout (Difficulty / Add Bot / Cancel) with sufficient padding (`padding: 12px`, `gap: 8px`). Dropdown styled with custom arrow, matches game aesthetic.
+- **Host Visibility on Other Players' Screens**: `server/gameManager.js` — When a player joins, host is moved from `slot-local` to next available compass slot; new player gets `slot-local`. Host now visible to joiners in their assigned slot.
+- **Bot Never Promoted to Host**: `server/gameManager.js` — `removePlayer()` fallback no longer promotes bots when no humans remain; `hostId` set to `null` instead.
+- **Card Width for Long Names**: `public/style.css` — `.player-card` width increased to `clamp(80px, 22vw, 120px)` for 15-char nicknames.
+- **Cache-Busting**: `public/index.html` bumped to `?v=46` for `style.css` and `client.js`.
+
+## [1.1.58] - 2026-11-19
+### Fixed
+- **Host/You Badge Overlap**: `public/style.css` — Repositioned YOU badge to top-right (absolute) and HOST badge to top-left (absolute) to prevent overlap.
+- **Lobby/Waiting Room Player Visibility**: `public/client.js` — Fixed `renderArenaPlayers()` slotMap logic to correctly include all human players in their assigned slots; local player always in `slot-local` with YOU badge; host shows HOST badge in their assigned slot.
+- **Card Width for Long Names**: `public/style.css` — Widened `.player-card` to `width: clamp(80px, 22vw, 120px)` to accommodate 15-character nicknames.
+- **Bot Placement at Exact Clicked Slot**: `server/gameManager.js`, `server/index.js`, `public/client.js` — `add_bot` now passes `slotClass` from placeholder click; bot created with exact `slotClass`; appears in the exact grid position where placeholder was clicked.
+- **Picker Matches Placeholder Size**: `public/style.css` — `.bot-difficulty-picker` now uses `inset: 0` to exactly match placeholder card dimensions.
+- **Vertical Centering in Waiting Room**: `public/style.css` — Added `justify-content: center` to `.waiting-arena-stage .player-card` to center scallion/name vertically when lives/rarity bars are hidden.
+- **Local Player Card Height**: `public/style.css` — Local player card in `#local-player-slot` naturally accommodates YOU badge; other cards have no dead space.
+- **Host Transfer to Real Player**: `server/gameManager.js` — `removePlayer()` now promotes next human (non-bot) player to host when host leaves; bots never become hosts.
+- **Difficulty Picker Buttons Work**: `public/client.js`, `public/style.css` — Fixed event delegation with `stopPropagation()`; difficulty pills, Add Bot, and Cancel buttons all functional.
+- **Cache-Busting**: `public/index.html` bumped to `?v=45` for `style.css` and `client.js`.
+
+## [1.1.57] - 2026-11-19
+### Fixed
+- **Local Player / Host Badge Confusion**: `public/client.js` — Fixed `renderArenaPlayers()` to exclude local player from slotMap (prevents duplicate rendering). Local player now only renders in `slot-local` with YOU badge; host renders in their assigned slot with HOST badge only.
+- **Standardized Card Sizes (Taller Than Wide)**: `public/style.css` — Unified `.player-card` to `width: clamp(72px, 20vw, 100px); height: clamp(100px, 28vw, 140px)` — taller than wide, consistent across all grid positions (center row no longer oversized).
+- **Bot Placement at Clicked Slot**: `server/gameManager.js`, `server/index.js`, `public/client.js` — `add_bot` now accepts `slotClass` from placeholder click; bot created with that exact `slotClass`; appears in the exact grid position where placeholder was clicked.
+- **Compact Difficulty Picker (Buttons, Not Dropdown)**: `public/client.js`, `public/style.css` — Replaced dropdown with compact button group (Easy/Medium/Hard pills); picker shrunk to `min-width: 140px`, `padding: 8px`; buttons styled like category pills.
+- **Cache-Busting**: `public/index.html` bumped to `?v=44` for `style.css` and `client.js`.
+
+## [1.1.55] - 2026-11-19
+### Added
+- **Waiting Room Bot Placeholders (Option B)**: `server/gameManager.js`, `server/index.js`, `public/client.js`, `public/style.css` — Empty slot placeholders in the 3×3 waiting room grid. Host sees dotted-border cards at next available compass slots (slot-top → slot-top-left → slot-top-right → slot-mid-left → slot-mid-right). Click placeholder → inline difficulty picker (Easy/Medium/Hard) → bot added with assigned slot. Non-hosts see muted disabled placeholders.
+- **Socket Events**: `add_bot` / `remove_bot` (host only, lobby state) with `room_updated` broadcast.
+- **Bot Identity**: `createBot()` assigns slotClass, `isBot: true`, `botDifficulty`, and unique ID.
+- **Visuals**: Dotted-border placeholder cards with 🤖 + "+ Bot", hover scale/color transition. Inline dropdown picker on click. Bot badge (🤖) on bot cards.
+- **Cache-Busting**: `public/index.html` bumped to `?v=42` for `style.css` and `client.js`.
+
+## [1.1.54] - 2026-11-19
+### Removed
+- **Automated Gameplay Bot System**: `server/gameManager.js`, `public/index.html`, `public/client.js`, `public/style.css` — Removed all automated bot gameplay logic including: `BOT_NAMES`, `createBot()`, `pickBotAnswer()`, `introduceTypo()`, `getBotDelay()`, `maybeTriggerBotTurn()`, `BOT_DELAYS`, `BOT_TYPO_RATES`, `BOT_RARITY_WEIGHTS` constants. Removed bot insertion in `startGame()`, bot turn triggers in `submitAnswer()`/`onFuseExpired()`, bot-aware logic in `checkWinOrContinue()`. Removed bot settings UI from lobby (bot count slider, difficulty dropdown) and associated CSS.
+### Changed
+- **Bot System Redesign**: Bots will now be added manually in the waiting room via empty slot placeholders (Option B design). Bots are added by host before game start, not during gameplay.
+- **Cache-Busting**: `public/index.html` bumped to `?v=41` for `style.css` and `client.js`.
+
+## [1.1.52] - 2026-11-19
+### Added
+- **Bot Answer Selection & Turn Logic (Task 3/8)**: `server/gameManager.js` — Implemented `pickBotAnswer(room, bot)` with rarity-weighted selection per difficulty (easy=uniform, medium=1.5x uncommon+, hard=4x rare+). Added `introduceTypo()` for typo injection (easy 30%, medium 10%, hard 0%). `maybeTriggerBotTurn(room)` triggers bot moves after: game start, human answer, fuse expiry/intermission. `getBotDelay()` returns difficulty-based delays (easy 1.5-3s, medium 0.8-1.8s, hard 0.3-0.8s).
+- **Cache-Busting**: (server-side only, no client version bump)
+
+## [1.1.51] - 2026-11-19
+### Added
+- **Bot Creation & Identity (Task 2/8)**: `server/gameManager.js` — Added `BOT_NAMES`, `createBot(difficulty, index)`, and bot insertion in `startGame()`. Bots have unique IDs, names (OnionBot, ShallotAI, etc.), difficulty, and `isBot: true` flag. `checkWinOrContinue()` updated to end game with no human winner if only bots remain alive.
+- **Cache-Busting**: (server-side only, no client version bump)
+
+## [1.1.50] - 2026-11-19
+### Added
+- **Bot Configuration Foundation (Task 1/8)**: `server/gameManager.js`, `server/index.js`, `public/client.js` — Room creation now accepts `settings.botCount` (0-5) and `settings.botDifficulty` ('easy'|'medium'|'hard'). Validated and stored in room.settings. Client sends defaults (0 bots, medium difficulty); UI in next task.
+- **Cache-Busting**: (server-side only, no client version bump)
+
 ## [1.1.49] - 2026-11-19
 ### Fixed
 - **Game Ends on Player Leave (2-Player)**: `server/gameManager.js` — `removePlayer()` now ends the game immediately if player count drops below 2 during active play. Previously only checked alive players, allowing game to continue with 1 player after a departure.
