@@ -489,13 +489,10 @@ function removePlayer(code, playerId) {
 
   // No server-side human slot reassignment needed - client computes display
   if (room.state === 'playing') {
-    // End game if fewer than 2 human players remain (can't play with 1 human)
-    const humanPlayers = room.players.filter(p => !p.isBot);
-    if (humanPlayers.length < 2) {
-      const winner = humanPlayers[0] || room.players[0];
-      endGame(room, winner);
-      return { ok: true, room: snapshot(room) };
-    }
+    // checkWinOrContinue handles all win conditions correctly:
+    // - 0 humans alive → game ends
+    // - 1 human + 0 bots → game ends
+    // - 1 human + bots → game continues
     if (checkWinOrContinue(room)) return { ok: true, room: snapshot(room) };
     if (wasActive) room.activePlayerId = nextAliveId(room, playerId) || alivePlayers(room)[0].id;
   }
