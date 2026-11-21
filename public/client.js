@@ -15,6 +15,8 @@ let statusFlashTimer = null;
 let statusFlashActive = false;
 let isMyTurn = false;
 let previousPlayerIds = new Set();
+let previousPlayers = [];
+let previousHostId = undefined;
 let lastWinnerId = null;
 let lastWinnerName = null;
 let lastPromptId = null;
@@ -338,6 +340,7 @@ const elements = {
   sendBtn: document.getElementById('send-btn'),
   activityFeed: document.getElementById('activity-feed'),
   eventLog: document.getElementById('event-log'),
+  lobbyEventLog: document.getElementById('lobby-event-log'),
   globalToastContainer: document.getElementById('global-toast-container'),
   recentAnswers: document.getElementById('recent-answers'),
   centerScallion: document.getElementById('center-scallion'),
@@ -500,13 +503,27 @@ function addFeedMessage(msg) {
   }
 }
 
-function addEventLog(text) {
+function addEventLog(text, isLobby = false) {
+  // Add to game arena event log
   const el = document.createElement('div');
   el.className = 'event-log-item';
   el.textContent = text;
   elements.eventLog.appendChild(el);
   while (elements.eventLog.children.length > 3) {
     elements.eventLog.removeChild(elements.eventLog.firstChild);
+  }
+
+  // Also add to lobby event log if in lobby or explicitly requested
+  if (isLobby || roomPhase === 'lobby' || roomPhase === 'waiting') {
+    const lobbyEl = document.createElement('div');
+    lobbyEl.className = 'event-log-item';
+    lobbyEl.textContent = text;
+    if (elements.lobbyEventLog) {
+      elements.lobbyEventLog.appendChild(lobbyEl);
+      while (elements.lobbyEventLog.children.length > 10) {
+        elements.lobbyEventLog.removeChild(elements.lobbyEventLog.firstChild);
+      }
+    }
   }
 }
 
@@ -595,20 +612,60 @@ socket.on('room_updated', (room) => {
 
   resetPostGameState();
 
-  // Detect player joins/leaves for event log
+  // Detect player joins/leaves, bot add/remove, host changes for event log
   const currentPlayerIds = new Set((room.players || []).map(p => p.id));
   if (previousPlayerIds.size > 0) {
     const joined = room.players?.find(p => !previousPlayerIds.has(p.id));
     const left = [...previousPlayerIds].filter(id => !currentPlayerIds.has(id));
     if (joined) {
-      addEventLog(`${joined.nickname} joined the room`);
+      // Don't log generic "joined the room" for bots - bot-specific log will handle it
+      if (!joined.isBot) {
+        addEventLog(`${joined.nickname} joined the room`, true);
+      }
     }
     if (left.length > 0) {
-      const leftName = room.players?.find(p => p.id === left[0])?.nickname || 'A player';
-      addEventLog(`${leftName} left the room`);
+      // Look up the left player in previousPlayers since they've been removed from room.players
+      const leftPlayer = previousPlayers?.find(p => p.id === left[0]);
+      const leftName = leftPlayer?.nickname || 'A player';
+      if (!leftPlayer?.isBot) {
+        addEventLog(`${leftName} left the game`, true);
+      }
+      // Bots are handled by the bot removal detection below
     }
   }
+
+  // Detect bot added
+  const currentBots = new Set((room.players || []).filter(p => p.isBot).map(p => p.id));
+  const previousBots = new Set((previousPlayers || []).filter(p => p.isBot).map(p => p.id));
+  const addedBots = [...currentBots].filter(id => !previousBots.has(id));
+  const removedBots = [...previousBots].filter(id => !currentBots.has(id));
+  
+  addedBots.forEach(botId => {
+    const bot = room.players?.find(p => p.id === botId);
+    if (bot) {
+      addEventLog(`🤖 ${bot.nickname} joined as a bot`, true);
+    }
+  });
+  
+  removedBots.forEach(botId => {
+    const bot = previousPlayers?.find(p => p.id === botId);
+    if (bot) {
+      addEventLog(`🤖 ${bot.nickname} was removed`, true);
+    }
+  });
+
+  // Detect host change
+  if (previousHostId !== undefined && room.hostId !== previousHostId) {
+    const newHost = room.players?.find(p => p.id === room.hostId);
+    if (newHost) {
+      addEventLog(`👑 ${newHost.nickname} is now the host`, true);
+    }
+  }
+
+  // Store current state for next comparison
   previousPlayerIds = currentPlayerIds;
+  previousPlayers = room.players || [];
+  previousHostId = room.hostId;
 
   if (room.state === 'playing' || room.state === 'intermission' || room.state === 'starting') {
     socket.emit('request_game_state', { roomCode: room.code });
@@ -966,6 +1023,10 @@ socket.on('answer_result', (res) => {
   if (res.valid) {
     const rarityText = res.rarity.replace('_', ' ').toUpperCase();
     flashTurnStatus(`Correct! ${rarityText} (+${res.pointsAwarded} pts)`, 'success');
+    // Heart gained event log - broadcast to both game and lobby
+    if (res.heartGranted) {
+      addEventLog(`❤️ You gained a heart! (${res.hearts}♥)`);
+    }
   } else {
     const msg = res.reason === 'used' ? 'That answer was already used!' : 'Invalid answer!';
     flashTurnStatus(msg, 'error');

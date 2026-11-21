@@ -1,5 +1,16 @@
 # CHANGELOG - Scallion
 
+## [1.1.87] - 2026-11-21
+### Added
+- **Lobby Event Logs**: `public/client.js`, `public/index.html`, `public/style.css` — Added event logs to the lobby/waiting room for key game events:
+  - **Heart Gained**: Logs when a player gains a heart from rarity points (e.g., "❤️ You gained a heart! (3♥)")
+  - **Bot Added**: Logs when a bot is added to the lobby (e.g., "🤖 BotName joined as a bot")
+  - **Bot Removed**: Logs when a bot is removed from the lobby (e.g., "🤖 BotName was removed")
+  - **Player Left Game**: Logs when a human player leaves the game (e.g., "PlayerName left the game")
+  - **New Host**: Logs when host changes (e.g., "👑 PlayerName is now the host")
+- **Lobby Event Log UI**: Added `#lobby-event-log` element to `#waiting-arena-stage` with matching styling to game arena event log.
+- **Cache-Busting**: `public/index.html` bumped to `?v=84` for `style.css` and `?v=85` for `client.js`.
+
 ## [1.1.86] - 2026-11-21
 ### Fixed
 - **Dead Bots Now Display as Defeated in Seats**: `public/client.js` — Fixed bug where dead bots (and humans) disappeared from the game arena instead of staying in their seats with a dimmed/chopped appearance.
