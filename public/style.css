@@ -667,6 +667,39 @@ button:active {
   grid-row: 2;
 }
 
+/* Game seat presets - Symmetrical 3x3 formation for active gameplay (#game-arena-stage)
+   Center (col 2, row 2) = chopping board
+   Bottom-right (col 3, row 3) = event log
+   Bottom-center (col 2, row 3) = local player (slot-local)
+   Available symmetrical seats for opponents (clockwise from mid-left):
+   These use grid positioning; explicitly reset position to override any .slot-* absolute positioning
+*/
+.game-seat-ml,
+.game-seat-tl,
+.game-seat-tc,
+.game-seat-tr,
+.game-seat-mr {
+  position: static; /* Reset any absolute positioning from .slot-* classes */
+  grid-column: 1;
+  grid-row: 2;
+}
+.game-seat-tl {
+  grid-column: 1;
+  grid-row: 1;
+}
+.game-seat-tc {
+  grid-column: 2;
+  grid-row: 1;
+}
+.game-seat-tr {
+  grid-column: 3;
+  grid-row: 1;
+}
+.game-seat-mr {
+  grid-column: 3;
+  grid-row: 2;
+}
+
 .arena-stage .player-card,
 .waiting-arena-stage .player-card,
 #local-player-slot .player-card {

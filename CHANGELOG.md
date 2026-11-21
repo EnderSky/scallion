@@ -1,5 +1,36 @@
 # CHANGELOG - Scallion
 
+## [1.1.85] - 2026-11-20
+### Fixed
+- **Bot Victory Selection**: `server/gameManager.js` — When all human players die and only bots remain, the game now selects the bot with the highest health as winner (random if tied). Other bots are marked as dead so they display as defeated before the victory screen.
+  - **Logic**: In `checkWinOrContinue`, when no humans remain alive, find the bot(s) with maximum health. Randomly select from tied bots. Mark all other bots as `alive = false` so they render as defeated on the victory screen.
+  - **Files**: `server/gameManager.js` (`checkWinOrContinue` function).
+- **Cache-Busting**: `public/index.html` bumped to `?v=81` for `style.css` and `?v=82` for `client.js`.
+
+## [1.1.84] - 2026-11-20
+### Fixed
+- **Human Opponents Not Displaying in Game Arena**: `public/client.js`, `public/style.css` — Fixed bug where human opponents (non-bot players) failed to render in `#game-arena-stage` while bots worked correctly.
+  - **Root Cause**: `renderGameArenaPlayers` did not filter dead/eliminated players from the opponents list, causing seat assignment mismatches. Human players lacked `slotClass` (null) while bots had it, and leftover `.slot-*` classes on bot cards had `position: absolute` CSS that conflicted with grid positioning.
+  - **Fixes Applied**:
+    - `renderGameArenaPlayers`: Filter out dead/eliminated players (`alive !== false`) before seat assignment; validate `players` array for null/undefined entries; clamp opponent count to valid preset range (1-5); strip leftover `.slot-*` classes from all cards; ensure every alive opponent gets a valid `.game-seat-*` class.
+    - `public/style.css`: Added `position: static` to `.game-seat-*` classes to explicitly override any residual `position: absolute` from `.slot-*` classes.
+  - **Defensive Guards Added**: Filter falsy/null players; clamp opponent count to valid preset range (1-5); guarantee seat assignment; strip `.slot-*` classes from all game arena cards.
+- **Cache-Busting**: `public/index.html` bumped to `?v=80` for `style.css` and `?v=81` for `client.js`.
+
+## [1.1.83] - 2026-11-20
+### Added
+- **Symmetrical 3×3 In-Game Seating with Clockwise Turn Order**: `public/client.js`, `public/style.css` — Complete overhaul of in-game player seating:
+  - **Clockwise Turn-Order Rotation**: In `#game-arena-stage`, local player anchored at bottom-center (`.slot-local`). Opponents rendered in clockwise turn order starting immediately after local player (wrapping around server's turn-order array). Seats locked for entire match; eliminated players remain in assigned seats (dimmed).
+  - **Symmetrical 3×3 Formation Presets**: New `.game-seat-*` CSS classes for symmetrical seating around the chopping board (center=board, bottom-right=event log, bottom-center=local player). Presets by opponent count:
+    - 1 opponent (2P): `['game-seat-tc']`
+    - 2 opponents (3P): `['game-seat-tl', 'game-seat-tr']`
+    - 3 opponents (4P): `['game-seat-ml', 'game-seat-tc', 'game-seat-mr']`
+    - 4 opponents (5P): `['game-seat-ml', 'game-seat-tl', 'game-seat-tr', 'game-seat-mr']`
+    - 5 opponents (6P): `['game-seat-ml', 'game-seat-tl', 'game-seat-tc', 'game-seat-tr', 'game-seat-mr']`
+  - **Lobby/Waiting Room Unchanged**: `#waiting-arena-stage` retains original fixed left-to-right / top-to-bottom slot allocation, `+ BOT` placeholders, and bot add/remove logic.
+  - **All Player Card Features Preserved**: Live typing bubbles (`data-player-id`), `.panic-shake`, `YOU`/`HOST`/bot badges, lives, progress bar intact on desktop & mobile.
+- **Cache-Busting**: `public/index.html` bumped to `?v=79` for `style.css` and `?v=80` for `client.js`.
+
 ## [1.1.82] - 2026-11-20
 ### Reverted
 - **Polar Positioning Reverted to Grid**: `public/style.css`, `public/client.js` — Polar positioning experiment reverted due to positioning issues. Restored original 3×3 grid layout with slot-based positioning.

@@ -339,10 +339,22 @@ function checkWinOrContinue(room) {
   
   // Game ends when NO humans are alive
   if (aliveHumans.length === 0) {
-    // Assign a random surviving bot as winner
-    const winner = aliveBots.length > 0 
-      ? aliveBots[Math.floor(Math.random() * aliveBots.length)]
-      : null;
+    // Select bot with highest health as winner (random if tied)
+    let winner = null;
+    if (aliveBots.length > 0) {
+      // Find max health among alive bots
+      const maxHealth = Math.max(...aliveBots.map(b => b.hearts));
+      const topBots = aliveBots.filter(b => b.hearts === maxHealth);
+      // Randomly select from top bots if tied
+      winner = topBots[Math.floor(Math.random() * topBots.length)];
+      
+      // Mark other bots as dead so they display as dead before victory screen
+      aliveBots.forEach(bot => {
+        if (bot.id !== winner.id) {
+          bot.alive = false;
+        }
+      });
+    }
     endGame(room, winner);
     return true;
   }

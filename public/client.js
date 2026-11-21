@@ -54,12 +54,26 @@ function getOpponentsInTurnOrder(room) {
   return ordered;
 }
 
-// Human display slot order (left-to-right, top-to-bottom)
+// Human display slot order (left-to-right, top-to-bottom) - used for lobby/waiting room
 // Local player (YOU) always renders at slot-local (bottom center)
 const HUMAN_SLOT_ORDER = ['slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
 
-function renderArenaPlayers(containerEl, players, options = {}) {
-  const { activePlayerId = null, isLocal = true, isWaitingRoom = false, isHost = false, isLobby = false, isHostViewer = false, localPlayer: passedLocalPlayer = null } = options;
+// Symmetrical 3x3 game seat presets for in-game seating (clockwise from mid-left)
+// These are the only seats used during active gameplay (excluding center=chopping board, bottom-right=event log)
+const GAME_SEAT_PRESETS = {
+  1: ['game-seat-tc'],                              // 2 players: top-center
+  2: ['game-seat-tl', 'game-seat-tr'],              // 3 players: top-left, top-right
+  3: ['game-seat-ml', 'game-seat-tc', 'game-seat-mr'], // 4 players: mid-left, top-center, mid-right
+  4: ['game-seat-ml', 'game-seat-tl', 'game-seat-tr', 'game-seat-mr'], // 5 players
+  5: ['game-seat-ml', 'game-seat-tl', 'game-seat-tc', 'game-seat-tr', 'game-seat-mr'] // 6 players
+};
+
+/**
+ * Renders players in the waiting room/lobby using the original left-to-right, top-to-bottom slot allocation
+ * with self-skip and bot-aware slot skipping.
+ */
+function renderWaitingRoomPlayers(containerEl, players, options = {}) {
+  const { isLocal = true, isWaitingRoom = true, isHost = false, isLobby = false, isHostViewer = false, localPlayer: passedLocalPlayer = null } = options;
 
   // Remove any previously rendered player cards from the container
   containerEl.querySelectorAll('.player-card').forEach(c => c.remove());
@@ -68,17 +82,14 @@ function renderArenaPlayers(containerEl, players, options = {}) {
   const localPlayer = passedLocalPlayer || players.find(p => p.id === socket.id);
   
   if (!localPlayer && !isWaitingRoom && !isLobby) {
-    console.warn('[renderArenaPlayers] Local player not found in players array during gameplay!', { socketId: socket.id, players: players.map(p => ({ id: p.id, slotClass: p.slotClass })) });
+    console.warn('[renderWaitingRoomPlayers] Local player not found in players array!', { socketId: socket.id });
   }
 
   // Separate humans and bots
-  // Players array is in join order (host first, then join order)
   const humans = players.filter(p => !p.isBot);
   const bots = players.filter(p => p.isBot);
 
   // Compute human display slots by skipping self AND bot-occupied slots
-  // Each client sees other humans in HUMAN_SLOT_ORDER, skipping themselves
-  // and skipping any slots occupied by bots
   const humanDisplaySlots = new Map(); // playerId -> slotClass
   const botOccupiedSlots = new Set(bots.map(b => b.slotClass).filter(Boolean));
   
@@ -86,7 +97,6 @@ function renderArenaPlayers(containerEl, players, options = {}) {
     const otherHumans = humans.filter(p => p.id !== localPlayer.id);
     let slotIndex = 0;
     otherHumans.forEach((human) => {
-      // Find next available slot not occupied by a bot
       while (slotIndex < HUMAN_SLOT_ORDER.length && botOccupiedSlots.has(HUMAN_SLOT_ORDER[slotIndex])) {
         slotIndex++;
       }
@@ -116,37 +126,32 @@ function renderArenaPlayers(containerEl, players, options = {}) {
     if (player) slotMap.set(slot, player);
   });
 
-  // Slot priority order for rendering
+  // Slot priority order for rendering (lobby/waiting room uses original grid slots)
   const allSlots = ['slot-local', 'slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
 
   allSlots.forEach(slotClass => {
     let card;
 
     if (slotClass === 'slot-local') {
-      // slot-local: local player always renders here (bottom center)
       if (localPlayer) {
-        card = createPlayerCard(localPlayer, activePlayerId, true, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
+        card = createPlayerCard(localPlayer, null, true, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
         if (localPlayer.isBot) card.classList.add('is-bot');
         if (localPlayer.isHost) card.classList.add('is-host');
       }
     } else {
       const player = slotMap.get(slotClass);
       if (player) {
-        // Player in their computed display slot
         const isLocalPlayer = player.id === socket.id;
-        card = createPlayerCard(player, activePlayerId, isLocalPlayer, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
+        card = createPlayerCard(player, null, isLocalPlayer, { showBotDifficulty: isWaitingRoom, isLobby, isHostViewer });
         if (player.isBot) card.classList.add('is-bot');
         if (player.isHost) card.classList.add('is-host');
       } else if (isWaitingRoom && isHost && isLobby && slotClass !== 'slot-local') {
-        // Empty slot placeholder (only for host in waiting room/lobby)
-        // Check if this slot is actually empty (no human assigned, no bot assigned)
         const hasHuman = humanDisplaySlots.has(slotClass);
         const hasBot = botOccupiedSlots.has(slotClass);
         if (!hasHuman && !hasBot) {
           card = createPlaceholderCard(slotClass);
         }
       } else {
-        // No player and not a placeholder slot - skip
         return;
       }
     }
@@ -156,6 +161,105 @@ function renderArenaPlayers(containerEl, players, options = {}) {
       containerEl.appendChild(card);
     }
   });
+}
+
+/**
+ * Renders players in the active game arena (#game-arena-stage) using symmetrical
+ * 3x3 formation with clockwise turn-order seating.
+ * - Local player always at bottom-center (slot-local)
+ * - Opponents distributed clockwise in turn order using symmetrical presets
+ * - Eliminated players stay in their seats (dimmed)
+ */
+function renderGameArenaPlayers(containerEl, players, options = {}) {
+  const { activePlayerId = null, isLocal = true, localPlayer: passedLocalPlayer = null } = options;
+
+  // Remove any previously rendered player cards from the container
+  containerEl.querySelectorAll('.player-card').forEach(c => c.remove());
+
+  // --- Defensive: filter out falsy/null entries and ensure valid player objects ---
+  const validPlayers = (players || []).filter(p => p && p.id);
+  
+  // Determine local player
+  const localPlayer = passedLocalPlayer || validPlayers.find(p => p.id === socket.id);
+  
+  if (!localPlayer) {
+    console.warn('[renderGameArenaPlayers] Local player not found in players array during gameplay!', { 
+      socketId: socket.id, 
+      players: validPlayers.map(p => ({ id: p.id, slotClass: p.slotClass, isBot: p.isBot, alive: p.alive })) 
+    });
+    // Fall back to rendering all players in lobby mode if local player not found
+    renderWaitingRoomPlayers(containerEl, validPlayers, { isLocal: true, isWaitingRoom: false, isLobby: false });
+    return;
+  }
+
+  // Server sends players in turn order. Find local player's index.
+  const localIndex = validPlayers.findIndex(p => p.id === localPlayer.id);
+  if (localIndex === -1) {
+    console.warn('[renderGameArenaPlayers] Local player not in players array');
+    renderWaitingRoomPlayers(containerEl, validPlayers, { isLocal: true, isWaitingRoom: false, isLobby: false });
+    return;
+  }
+
+  // Build opponents list in clockwise turn order (starting after local player, wrapping around)
+  // Only include alive players (eliminated players stay in seats but are dimmed via .eliminated class)
+  const aliveOpponents = [...validPlayers.slice(localIndex + 1), ...validPlayers.slice(0, localIndex)]
+    .filter(p => p.alive !== false); // Include players without explicit alive:false (default alive)
+  
+  // Get the appropriate symmetrical seat preset based on opponent count
+  // Clamp opponent count to valid preset range (1-5 opponents = 2-6 players total)
+  const opponentCount = Math.min(Math.max(aliveOpponents.length, 1), 5);
+  const seatPreset = GAME_SEAT_PRESETS[opponentCount] || [];
+
+  // Map each alive opponent to their assigned game seat
+  const opponentSeatMap = new Map();
+  aliveOpponents.forEach((opponent, index) => {
+    if (index < seatPreset.length) {
+      opponentSeatMap.set(opponent.id, seatPreset[index]);
+    }
+  });
+
+  // Render local player at bottom-center (slot-local)
+  const localCard = createPlayerCard(localPlayer, null, true, { 
+    showBotDifficulty: false, 
+    isLobby: false, 
+    isHostViewer: false 
+  });
+  localCard.classList.add('slot-local');
+  // Ensure no leftover lobby slot classes on local player
+  localCard.classList.remove('slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right');
+  containerEl.appendChild(localCard);
+
+  // Render each alive opponent in their assigned game seat
+  aliveOpponents.forEach(opponent => {
+    const seatClass = opponentSeatMap.get(opponent.id);
+    if (!seatClass) return; // Should not happen with correct preset
+    
+    const isActive = opponent.id === activePlayerId;
+    const card = createPlayerCard(opponent, activePlayerId, false, { 
+      showBotDifficulty: false, 
+      isLobby: false, 
+      isHostViewer: false 
+    });
+    
+    // Add game seat class for symmetrical positioning
+    card.classList.add(seatClass);
+    // Strip any leftover lobby slot classes that would conflict with grid positioning
+    card.classList.remove('slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right');
+    // Do NOT add opponent.slotClass (lobby slot) - it conflicts with grid positioning
+    
+    containerEl.appendChild(card);
+  });
+}
+
+// Legacy function name kept for compatibility - delegates to appropriate renderer
+function renderArenaPlayers(containerEl, players, options = {}) {
+  const { isWaitingRoom = false, isLobby = false } = options;
+  
+  if (isWaitingRoom || isLobby) {
+    renderWaitingRoomPlayers(containerEl, players, options);
+  } else {
+    renderGameArenaPlayers(containerEl, players, options);
+  }
 }
 
 // Render neutral game start view (all players in position, no active player highlight, no cleaver)
