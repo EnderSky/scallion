@@ -1,5 +1,13 @@
 # CHANGELOG - Scallion
 
+## [1.1.86] - 2026-11-21
+### Fixed
+- **Dead Bots Now Display as Defeated in Seats**: `public/client.js` — Fixed bug where dead bots (and humans) disappeared from the game arena instead of staying in their seats with a dimmed/chopped appearance.
+  - **Root Cause**: `renderGameArenaPlayers` was filtering out dead players (`filter(p => p.alive !== false)`) before seat assignment, causing dead players to disappear entirely instead of remaining in their assigned seats with the `.eliminated` class (dimmed/chopped appearance).
+  - **Fix**: Modified `renderGameArenaPlayers` to include ALL opponents (both alive and dead) in the seat assignment. Dead players now render in their assigned seats with the `.eliminated` class (dimmed) and `chopped` avatar state, matching human player behavior. Also stripped leftover `.slot-*` classes from all game arena cards to prevent CSS conflicts.
+  - **Files**: `public/client.js` (`renderGameArenaPlayers` function).
+- **Cache-Busting**: `public/index.html` bumped to `?v=82` for `style.css` and `?v=83` for `client.js`.
+
 ## [1.1.85] - 2026-11-20
 ### Fixed
 - **Bot Victory Selection**: `server/gameManager.js` — When all human players die and only bots remain, the game now selects the bot with the highest health as winner (random if tied). Other bots are marked as dead so they display as defeated before the victory screen.

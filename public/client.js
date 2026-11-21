@@ -168,7 +168,7 @@ function renderWaitingRoomPlayers(containerEl, players, options = {}) {
  * 3x3 formation with clockwise turn-order seating.
  * - Local player always at bottom-center (slot-local)
  * - Opponents distributed clockwise in turn order using symmetrical presets
- * - Eliminated players stay in their seats (dimmed)
+ * - Eliminated players stay in their seats (dimmed/chopped)
  */
 function renderGameArenaPlayers(containerEl, players, options = {}) {
   const { activePlayerId = null, isLocal = true, localPlayer: passedLocalPlayer = null } = options;
@@ -201,25 +201,24 @@ function renderGameArenaPlayers(containerEl, players, options = {}) {
   }
 
   // Build opponents list in clockwise turn order (starting after local player, wrapping around)
-  // Only include alive players (eliminated players stay in seats but are dimmed via .eliminated class)
-  const aliveOpponents = [...validPlayers.slice(localIndex + 1), ...validPlayers.slice(0, localIndex)]
-    .filter(p => p.alive !== false); // Include players without explicit alive:false (default alive)
+  // Include ALL opponents (alive AND dead) - dead players stay in their seats with .eliminated class
+  const allOpponents = [...validPlayers.slice(localIndex + 1), ...validPlayers.slice(0, localIndex)];
   
   // Get the appropriate symmetrical seat preset based on opponent count
   // Clamp opponent count to valid preset range (1-5 opponents = 2-6 players total)
-  const opponentCount = Math.min(Math.max(aliveOpponents.length, 1), 5);
+  const opponentCount = Math.min(Math.max(allOpponents.length, 1), 5);
   const seatPreset = GAME_SEAT_PRESETS[opponentCount] || [];
 
-  // Map each alive opponent to their assigned game seat
+  // Map each opponent to their assigned game seat
   const opponentSeatMap = new Map();
-  aliveOpponents.forEach((opponent, index) => {
+  allOpponents.forEach((opponent, index) => {
     if (index < seatPreset.length) {
       opponentSeatMap.set(opponent.id, seatPreset[index]);
     }
   });
 
   // Render local player at bottom-center (slot-local)
-  const localCard = createPlayerCard(localPlayer, null, true, { 
+  const localCard = createPlayerCard(localPlayer, activePlayerId, true, { 
     showBotDifficulty: false, 
     isLobby: false, 
     isHostViewer: false 
@@ -229,8 +228,8 @@ function renderGameArenaPlayers(containerEl, players, options = {}) {
   localCard.classList.remove('slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right');
   containerEl.appendChild(localCard);
 
-  // Render each alive opponent in their assigned game seat
-  aliveOpponents.forEach(opponent => {
+  // Render each opponent in their assigned game seat (both alive and dead)
+  allOpponents.forEach(opponent => {
     const seatClass = opponentSeatMap.get(opponent.id);
     if (!seatClass) return; // Should not happen with correct preset
     

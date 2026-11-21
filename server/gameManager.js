@@ -6,8 +6,8 @@ const { getRandomPrompt, validateAnswer, normalize } = require('./questionLoader
 const RARITY_POINTS = { common: 10, uncommon: 20, rare: 35, deep_cut: 50, one_in_a_krillion: 100 };
 const START_HEARTS = 2;
 const MAX_HEARTS = 3;
-const MIN_FUSE_MS = 12000; // Range: 12-30s
-const MAX_FUSE_MS = 30000;
+const MIN_FUSE_MS = 10000; // Range: 12-30s
+const MAX_FUSE_MS = 25000;
 const MIN_TURN_WINDOW_MS = 8000; // Increased: bump to 8s
 const POINTS_PER_HEART = 100;
 const MAX_PLAYERS = 6;
@@ -33,21 +33,21 @@ const BOT_TYPO_RATES = {
 
 // Chance for bot to fail to answer in time (forfeit turn)
 const BOT_NO_ANSWER_CHANCE = {
-  easy: 0.35,   // 35% chance to not answer
-  medium: 0.15, // 15% chance to not answer
+  easy: 0.30,   // 30% chance to not answer
+  medium: 0.10, // 10% chance to not answer
   hard: 0.03    // 3% chance to not answer
 };
 
 const BOT_RARITY_WEIGHTS = {
-  easy: { common: 1, uncommon: 1, rare: 1, deep_cut: 1, one_in_a_krillion: 1 },
-  medium: { common: 1, uncommon: 1.5, rare: 2, deep_cut: 3, one_in_a_krillion: 4 },
-  hard: { common: 1, uncommon: 2, rare: 4, deep_cut: 8, one_in_a_krillion: 16 }
-};
+  // Newbie: Sticks almost exclusively to the basics, rarely finds deep cuts
+  easy: { common: 40, uncommon: 15, rare: 4, deep_cut: 1, one_in_a_krillion: 0.2 },
 
-// Human slot assignment order: left-to-right, top-to-bottom
-// These are the display slots for OTHER humans on your screen.
-// Local player (YOU) always renders at slot-local (bottom).
-const HUMAN_SLOT_ORDER = ['slot-top-left', 'slot-top', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
+  // Reasonable: Mostly uses standard options, occasionally pulls a solid rare
+  medium: { common: 25, uncommon: 15, rare: 6, deep_cut: 2, one_in_a_krillion: 0.5 },
+
+  // Experienced: Still relies on common staples, but consistently mixes in rare tech
+  hard: { common: 15, uncommon: 12, rare: 8, deep_cut: 4, one_in_a_krillion: 1.5 }
+};
 
 // All compass slots (for bots and game redistribution)
 const COMPASS_SLOTS = ['slot-top', 'slot-top-left', 'slot-top-right', 'slot-mid-left', 'slot-mid-right'];
